@@ -1,5 +1,5 @@
 #pragma once
-#include <drogon/HttpClient.h>
+#include "utils/HttpClientPool.hpp"
 #include <drogon/utils/coroutine.h>
 #include <atomic>
 #include <string>
@@ -33,8 +33,8 @@ private:
     std::string cloudName_;
     std::string apiKey_;
     std::string apiSecret_;
-    drogon::HttpClientPtr delivery_;
-    drogon::HttpClientPtr api_;
+    HttpClientPool delivery_;
+    HttpClientPool api_;
 
     static constexpr const char* ALLOWED_FORMATS = "jpg,jpeg,png,webp";
 };

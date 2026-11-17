@@ -26,8 +26,8 @@ CloudinaryService::CloudinaryService(std::string cloudName, std::string apiKey, 
     : cloudName_(std::move(cloudName)),
       apiKey_(std::move(apiKey)),
       apiSecret_(std::move(apiSecret)),
-      delivery_(drogon::HttpClient::newHttpClient("https://res.cloudinary.com")),
-      api_(drogon::HttpClient::newHttpClient(apiUrl)) {}
+      delivery_("https://res.cloudinary.com"),
+      api_(apiUrl) {}
 
 std::string CloudinaryService::sign(Params params, const std::string& secret) {
     std::sort(params.begin(), params.end());
@@ -72,7 +72,7 @@ drogon::Task<bool> CloudinaryService::exists(std::string publicId) {
     auto req = drogon::HttpRequest::newHttpRequest();
     req->setMethod(drogon::Head);
     req->setPath("/" + cloudName_ + "/image/upload/" + publicId);
-    auto resp = co_await delivery_->sendRequestCoro(req, 10);
+    auto resp = co_await delivery_.get()->sendRequestCoro(req, 10);
     co_return resp->statusCode() == drogon::k200OK;
 }
 
@@ -86,7 +86,7 @@ drogon::Task<> CloudinaryService::deleteByPrefix(std::string prefix) {
         req->setParameter("prefix", prefix);
         req->addHeader("Authorization", "Basic " + credentials);
 
-        auto resp = co_await api_->sendRequestCoro(req, 60);
+        auto resp = co_await api_.get()->sendRequestCoro(req, 60);
         if (resp->statusCode() != drogon::k200OK) {
             throw std::runtime_error("Deleting images under " + prefix + " failed: " + errorOf(resp));
         }

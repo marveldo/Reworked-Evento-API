@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 GeoService::GeoService(std::string ipinfoToken)
-    : token_(std::move(ipinfoToken)), client_(drogon::HttpClient::newHttpClient("https://ipinfo.io")) {}
+    : token_(std::move(ipinfoToken)), clients_("https://ipinfo.io") {}
 
 bool GeoService::isPublicIp(const std::string& ip) {
     static const std::regex ipv4(R"((\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3})");
@@ -32,7 +32,7 @@ drogon::Task<std::optional<std::string>> GeoService::locate(std::string ip) {
     req->setPath("/" + ip + "/json");
     if (!token_.empty()) req->setParameter("token", token_);
 
-    auto resp = co_await client_->sendRequestCoro(req, 10);
+    auto resp = co_await clients_.get()->sendRequestCoro(req, 10);
     if (resp->statusCode() == drogon::k429TooManyRequests) throw std::runtime_error("ipinfo rate limit reached");
     if (resp->statusCode() != drogon::k200OK) co_return std::nullopt;
 

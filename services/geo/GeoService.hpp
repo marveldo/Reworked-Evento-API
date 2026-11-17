@@ -1,5 +1,5 @@
 #pragma once
-#include <drogon/HttpClient.h>
+#include "utils/HttpClientPool.hpp"
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <string>
@@ -14,5 +14,5 @@ public:
 
 private:
     std::string token_;
-    drogon::HttpClientPtr client_;
+    HttpClientPool clients_;
 };

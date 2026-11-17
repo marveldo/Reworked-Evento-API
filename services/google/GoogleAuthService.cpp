@@ -3,7 +3,7 @@
 #include <json/json.h>
 
 GoogleAuthService::GoogleAuthService()
-    : client_(drogon::HttpClient::newHttpClient("https://oauth2.googleapis.com")) {}
+    : clients_("https://oauth2.googleapis.com") {}
 
 drogon::Task<std::optional<GoogleIdentity>> GoogleAuthService::verifyIdToken(std::string idToken) {
     auto req = drogon::HttpRequest::newHttpRequest();
@@ -11,7 +11,7 @@ drogon::Task<std::optional<GoogleIdentity>> GoogleAuthService::verifyIdToken(std
     req->setPath("/tokeninfo");
     req->setParameter("id_token", idToken);
 
-    auto resp = co_await client_->sendRequestCoro(req, 10);
+    auto resp = co_await clients_.get()->sendRequestCoro(req, 10);
     if (resp->statusCode() != drogon::k200OK) co_return std::nullopt;
 
     const auto json = resp->getJsonObject();

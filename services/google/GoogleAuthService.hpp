@@ -1,5 +1,5 @@
 #pragma once
-#include <drogon/HttpClient.h>
+#include "utils/HttpClientPool.hpp"
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <string>
@@ -21,5 +21,5 @@ public:
     drogon::Task<std::optional<GoogleIdentity>> verifyIdToken(std::string idToken);
 
 private:
-    drogon::HttpClientPtr client_;
+    HttpClientPool clients_;
 };

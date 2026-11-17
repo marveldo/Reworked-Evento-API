@@ -1,0 +1,87 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# Creates the API (Docker), a Postgres database and a Key Value (Redis) instance, and wires them together.
+# Values marked `sync: false` are asked for once when you create the Blueprint.
+
+services:
+  - type: web
+    name: evento-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: THREADS
+        value: "2"
+      - key: FRONTEND_LINK
+        sync: false                # e.g. https://evento-frontend.vercel.app
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false                # e.g. https://evento-frontend.vercel.app
+
+      # Database (Render's internal URL; migrations run on every start)
+      - key: DB_URL
+        fromDatabase:
+          name: evento-db
+          property: connectionString
+      - key: DB_CONNECTIONS
+        value: "3"
+
+      # Redis for the task queue and the WebSocket messages
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: evento-redis
+          property: connectionString
+      - key: QUEUE_MAX_ATTEMPTS
+        value: "3"
+      - key: QUEUE_MAX_IN_FLIGHT
+        value: "10"
+
+      # Auth
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRATION
+        value: 30d
+      - key: JWT_REFRESH_EXPIRATION
+        value: 90d
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      # Email (Resend)
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ASSETS_URL
+        sync: false
+
+      # Cloudinary (photos)
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: evento
+
+      # Location from the login IP
+      - key: GEO_LOOKUP_ENABLED
+        value: "true"
+      - key: IPINFO_TOKEN
+        sync: false
+
+  - type: keyvalue
+    name: evento-redis
+    plan: free
+    maxmemoryPolicy: noeviction    # never silently drop queued tasks when memory is full
+    ipAllowList: []                # only reachable from your Render services
+
+databases:
+  - name: evento-db
+    plan: free
+    databaseName: evento
+    user: evento

@@ -1,6 +1,7 @@
 #include "NotificationsSocketController.h"
 #include "middleware/JwtMiddleware.hpp"
 #include "settings/Settings.h"
+#include <drogon/drogon.h>
 #include <algorithm>
 #include <json/json.h>
 
@@ -48,9 +49,14 @@ namespace {
         co_return std::make_pair(SocketAuth::Ok, claims);
     }
 
-    void reject(const WebSocketConnectionPtr& conn, SocketAuth result) {
-        if (result == SocketAuth::LoggedOut) conn->shutdown(LOGGED_OUT, "This device has been logged Out");
-        else conn->shutdown(BAD_TOKEN, "Invalid or expired token");
+    constexpr double CLOSE_GRACE_SECONDS = 1.0;
+
+    void closeWith(const WebSocketConnectionPtr& conn, CloseCode code, const std::string& reason) {
+        conn->shutdown(code, reason);
+        std::weak_ptr<WebSocketConnection> weak = conn;
+        drogon::app().getLoop()->runAfter(CLOSE_GRACE_SECONDS, [weak]() {
+            if (auto socket = weak.lock(); socket && !socket->disconnected()) socket->forceClose();
+        });
     }
 
     std::string compact(const Json::Value& value) {
@@ -58,11 +64,26 @@ namespace {
         writer["indentation"] = "";
         return Json::writeString(writer, value);
     }
+
+    const std::string LOGGED_OUT_REASON = "This device has been logged Out";
+
+    void logOut(const WebSocketConnectionPtr& conn) {
+        Json::Value message;
+        message["type"]   = "logout";
+        message["detail"] = LOGGED_OUT_REASON;
+        if (conn->connected()) conn->send(compact(message));
+        closeWith(conn, LOGGED_OUT, LOGGED_OUT_REASON);
+    }
+
+    void reject(const WebSocketConnectionPtr& conn, SocketAuth result) {
+        if (result == SocketAuth::LoggedOut) logOut(conn);
+        else closeWith(conn, BAD_TOKEN, "Invalid or expired token");
+    }
 }
 
 Task<> NotificationsSocketController::handleNewConnectionCoro(const HttpRequestPtr& req, const WebSocketConnectionPtr& conn) {
     if (!allowedOrigin(req)) {
-        conn->shutdown(CloseCode::kViolation, "Origin not allowed");
+        closeWith(conn, CloseCode::kViolation, "Origin not allowed");
         co_return;
     }
     const auto [result, claims] = co_await authenticateSocket(services_, req);
@@ -85,12 +106,12 @@ Task<> NotificationsSocketController::handleNewConnectionCoro(const HttpRequestP
         });
     session->logoutListener = realtime->listen(RealtimeService::logoutChannel(session->deviceId),
         [weak](const std::string&) {
-            if (auto socket = weak.lock(); socket && socket->connected()) socket->shutdown(LOGGED_OUT, "This device has been logged Out");
+            if (auto socket = weak.lock(); socket && socket->connected()) logOut(socket);
         });
 
     // Logged out between the token check and the subscription: that message was missed, so check again.
     if (!co_await services_->deviceService->isActive(session->deviceId, session->userId)) {
-        conn->shutdown(LOGGED_OUT, "This device has been logged Out");
+        logOut(conn);
     }
 }
 
@@ -108,7 +129,7 @@ Task<> NotificationsSocketController::handleConnectionClosedCoro(const WebSocket
 
 Task<> HomeSocketController::handleNewConnectionCoro(const HttpRequestPtr& req, const WebSocketConnectionPtr& conn) {
     if (!allowedOrigin(req)) {
-        conn->shutdown(CloseCode::kViolation, "Origin not allowed");
+        closeWith(conn, CloseCode::kViolation, "Origin not allowed");
         co_return;
     }
     const auto [result, claims] = co_await authenticateSocket(services_, req);

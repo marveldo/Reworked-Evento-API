@@ -15,7 +15,7 @@ std::string DeviceInfoMiddleware::clientIp(const HttpRequestPtr& req) {
 }
 
 void DeviceInfoMiddleware::invoke(const HttpRequestPtr& req, MiddlewareNextCallback&& nextCb, MiddlewareCallback&& mcb) {
-    const DeviceDetails device = user_agent::parse(req->getHeader("User-Agent"));
+    const DeviceDetails device = user_agent::parse(req->getHeader("User-Agent"), req->getHeader("Sec-CH-UA-Model"));
 
     req->attributes()->insert("ip_address", clientIp(req));
     req->attributes()->insert("device_type", device.type);

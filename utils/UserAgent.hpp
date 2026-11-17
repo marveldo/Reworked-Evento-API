@@ -26,6 +26,17 @@ inline std::string osFamily(const std::string& ua) {
     return "Other";
 }
 
+inline std::string modelName(const std::string& model) {
+    if (model.empty() || model == "K" || model == "wv") return "";
+    if (model.rfind("SM-", 0) == 0) return "Samsung " + model;
+    return model;
+}
+
+inline std::string unquote(const std::string& value) {
+    if (value.size() >= 2 && value.front() == '"' && value.back() == '"') return value.substr(1, value.size() - 2);
+    return value;
+}
+
 inline std::string deviceFamily(const std::string& ua) {
     static const std::regex bot(R"(bot|spider|crawl|slurp)", std::regex::icase);
     if (std::regex_search(ua, bot)) return "Spider";
@@ -36,9 +47,8 @@ inline std::string deviceFamily(const std::string& ua) {
         static const std::regex model(R"(Android[^;)]*;\s*(?:[a-z]{2}[-_][a-zA-Z]{2};\s*)?([^;)]+?)(?:\s+Build/[^;)]*)?\s*[;)])");
         std::smatch m;
         if (std::regex_search(ua, m, model)) {
-            std::string name = m[1].str();
-            if (name.rfind("SM-", 0) == 0) return "Samsung " + name;
-            if (!name.empty() && name != "wv") return name;
+            const std::string name = modelName(m[1].str());
+            if (!name.empty()) return name;
         }
         return "Generic Smartphone";
     }
@@ -46,10 +56,11 @@ inline std::string deviceFamily(const std::string& ua) {
     return "Other";
 }
 
-inline DeviceDetails parse(const std::string& ua) {
+inline DeviceDetails parse(const std::string& ua, const std::string& modelHint = "") {
     DeviceDetails details;
     details.os   = osFamily(ua);
-    details.name = deviceFamily(ua);
+    const std::string model = modelName(unquote(modelHint));
+    details.name = model.empty() ? deviceFamily(ua) : model;
 
     const bool tablet = has(ua, "iPad") || has(ua, "Tablet") || has(ua, "Kindle") || has(ua, "Silk") ||
                         (has(ua, "Android") && !has(ua, "Mobile"));

@@ -53,3 +53,11 @@ std::shared_ptr<Claims> JwtService::verifyAccessToken(const std::string& token) 
 std::shared_ptr<Claims> JwtService::verifyRefreshToken(const std::string& token) {
     return verify(token, "refresh", refreshSecret_);
 }
+
+Token JwtService::generateSocketToken(const Claims& claims) {
+    return sign(claims, "socket", accessSecret_, SOCKET_TOKEN_LIFETIME);
+}
+
+std::shared_ptr<Claims> JwtService::verifySocketToken(const std::string& token) {
+    return verify(token, "socket", accessSecret_);
+}

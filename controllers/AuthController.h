@@ -22,6 +22,7 @@ class AuthController : public drogon::HttpController<AuthController, false>
     ADD_METHOD_TO(AuthController::Refresh,  API_V1 + "/auth/refresh/", Post, "RefreshRateLimit");
     ADD_METHOD_TO(AuthController::Google,   API_V1 + "/auth/google/", Post, "SignupRateLimit", "DeviceInfoMiddleware");
     ADD_METHOD_TO(AuthController::Logout,   API_V1 + "/auth/logout/", Post);
+    ADD_METHOD_TO(AuthController::SocketToken, API_V1 + "/auth/socket-token/", Post, "JwtMiddleWare");
     METHOD_LIST_END
 
     // Checks a token is still good (the frontend's TestToken).
@@ -35,6 +36,7 @@ class AuthController : public drogon::HttpController<AuthController, false>
     Task<HttpResponsePtr> Google(HttpRequestPtr req);
     // {"device_id", "refresh_token"}: ends that device's session.
     Task<HttpResponsePtr> Logout(HttpRequestPtr req);
+    Task<HttpResponsePtr> SocketToken(HttpRequestPtr req);
 
   private:
     // The login / Google response: tokens plus the user with their device_id.

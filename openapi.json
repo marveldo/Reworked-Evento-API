@@ -3,7 +3,7 @@
   "info": {
     "title": "Evento API",
     "version": "1.0.0",
-    "description": "Drogon port of the Evento Django API. Responses keep the Django shapes. Paths end with a slash.\n\nWebSockets: `wss://<host>/ws/notifications/?access_token=<access>` sends `{\"detail\": \"Notification Message\", \"message\": \"...\"}` and closes with code 4401 when the device is logged out. `wss://<host>/ws/home/?access_token=<access>` sends a greeting."
+    "description": "Drogon port of the Evento Django API. Responses keep the Django shapes. Paths end with a slash.\n\nWebSockets: `wss://<host>/ws/notifications/?token=<socket token>` (from `POST /api/v1/auth/socket-token/`) sends `{\"detail\": \"Notification Message\", \"message\": \"...\"}`. `?access_token=<access>` is still accepted for server-side clients. Close codes: 4401 the device was logged out (end the session); 4403 invalid or expired token (get a new socket token and reconnect); 1008 origin not in CORS_ALLOWED_ORIGINS. `wss://<host>/ws/home/` takes the same parameters and sends a greeting."
   },
   "servers": [
     {
@@ -684,6 +684,63 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/socket-token/": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Short-lived token for opening a WebSocket from the browser",
+        "description": "Valid for 60 seconds and only on `/ws/*/?token=`; it is not accepted as an access token. An open socket stays open after the token expires.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "ISO 8601 UTC"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the token is no longer valid",
             "content": {
               "application/json": {
                 "schema": {

@@ -7,6 +7,7 @@
 namespace {
     // The close code the frontend treats as "you've been logged out".
     const CloseCode LOGGED_OUT = static_cast<CloseCode>(4401);
+    const CloseCode BAD_TOKEN = static_cast<CloseCode>(4403);
 
     // What a socket is listening to, so it can stop when it closes.
     struct SocketSession {
@@ -26,6 +27,32 @@ namespace {
         return std::find(allowed.begin(), allowed.end(), origin) != allowed.end();
     }
 
+    enum class SocketAuth { Ok, BadToken, LoggedOut };
+
+    Task<std::pair<SocketAuth, std::shared_ptr<Claims>>> authenticateSocket(Services* services, const HttpRequestPtr& req) {
+        const std::string socketToken = req->getParameter("token");
+        if (socketToken.empty()) {
+            auto claims = co_await JwtMiddleWare::authenticate(services, req->getParameter("access_token"));
+            co_return std::make_pair(claims ? SocketAuth::Ok : SocketAuth::BadToken, claims);
+        }
+
+        std::shared_ptr<Claims> claims;
+        try {
+            claims = services->jwtService->verifySocketToken(socketToken);
+        } catch (const std::exception&) {
+            co_return std::make_pair(SocketAuth::BadToken, nullptr);
+        }
+        if (!co_await services->deviceService->isActive(claims->deviceId, claims->userId)) {
+            co_return std::make_pair(SocketAuth::LoggedOut, nullptr);
+        }
+        co_return std::make_pair(SocketAuth::Ok, claims);
+    }
+
+    void reject(const WebSocketConnectionPtr& conn, SocketAuth result) {
+        if (result == SocketAuth::LoggedOut) conn->shutdown(LOGGED_OUT, "This device has been logged Out");
+        else conn->shutdown(BAD_TOKEN, "Invalid or expired token");
+    }
+
     std::string compact(const Json::Value& value) {
         Json::StreamWriterBuilder writer;
         writer["indentation"] = "";
@@ -38,9 +65,9 @@ Task<> NotificationsSocketController::handleNewConnectionCoro(const HttpRequestP
         conn->shutdown(CloseCode::kViolation, "Origin not allowed");
         co_return;
     }
-    const auto claims = co_await JwtMiddleWare::authenticate(services_, req->getParameter("access_token"));
-    if (!claims) {
-        conn->shutdown(LOGGED_OUT, "Authentication error");
+    const auto [result, claims] = co_await authenticateSocket(services_, req);
+    if (result != SocketAuth::Ok) {
+        reject(conn, result);
         co_return;
     }
 
@@ -84,9 +111,9 @@ Task<> HomeSocketController::handleNewConnectionCoro(const HttpRequestPtr& req, 
         conn->shutdown(CloseCode::kViolation, "Origin not allowed");
         co_return;
     }
-    const auto claims = co_await JwtMiddleWare::authenticate(services_, req->getParameter("access_token"));
-    if (!claims) {
-        conn->shutdown(LOGGED_OUT, "Unauthenticated");
+    const auto [result, claims] = co_await authenticateSocket(services_, req);
+    if (result != SocketAuth::Ok) {
+        reject(conn, result);
         co_return;
     }
     Json::Value hello;

@@ -73,12 +73,15 @@ All under `/api/v1`, with the trailing slash, as in Django.
 | `GET / PUT / DELETE auth/current-user/` | the logged-in user |
 | `GET auth/devices/` | your devices |
 | `DELETE auth/logout-device/<id>/` | log a device out |
+| `POST auth/socket-token/` | **new**: 60-second token for opening a WebSocket from the browser |
 | `GET / POST events/` | `?tag=&limit=&offset=` / create |
 | `GET events/<id>/` | one event |
 | `GET / POST events/<id>/attendees/` | attendees / register `{email}` |
 | `POST photos/signature/` | **new**: `{kind: profile|event}` -> signed Cloudinary upload |
 
-WebSockets (not under `/api/v1`): `/ws/notifications/?access_token=` and `/ws/home/?access_token=`.
+WebSockets (not under `/api/v1`): `/ws/notifications/` and `/ws/home/`, authenticated with `?token=<socket token>`
+(browsers) or `?access_token=<access>` (servers). The Origin header must be in `CORS_ALLOWED_ORIGINS`.
+Close codes: `4401` device logged out, `4403` invalid or expired token, `1008` origin not allowed.
 
 ## What runs in the background now
 

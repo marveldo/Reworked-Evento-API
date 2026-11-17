@@ -48,6 +48,11 @@ class JwtService {
         std::shared_ptr<Claims> verifyAccessToken(const std::string& token);
         std::shared_ptr<Claims> verifyRefreshToken(const std::string& token);
 
+        Token generateSocketToken(const Claims& claims);
+        std::shared_ptr<Claims> verifySocketToken(const std::string& token);
+
+        static constexpr std::chrono::seconds SOCKET_TOKEN_LIFETIME{60};
+
     private:
         Token sign(const Claims& claims, const std::string& type, const std::string& secret, std::chrono::seconds lifetime);
         std::shared_ptr<Claims> verify(const std::string& token, const std::string& type, const std::string& secret);

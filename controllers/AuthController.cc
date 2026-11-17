@@ -137,3 +137,13 @@ Task<HttpResponsePtr> AuthController::startSession(HttpRequestPtr req, const dro
     data["device_id"] = session.deviceId;
     co_return res::success(status, "Login Successful", data, res::Tokens{session.accessToken, session.refreshToken, session.accessexpirytime, session.refreshexpirytime});
 }
+
+Task<HttpResponsePtr> AuthController::SocketToken(HttpRequestPtr req) {
+    const Claims claims{attribute(req, "id"), "", attribute(req, "email"), attribute(req, "device_id")};
+    const Token token = services_->jwtService->generateSocketToken(claims);
+
+    Json::Value data;
+    data["token"]      = token.token;
+    data["expires_at"] = token.expiry;
+    co_return res::success(k200OK, "Socket token created", data);
+}

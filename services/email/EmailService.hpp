@@ -1,10 +1,10 @@
 #pragma once
 #include <drogon/HttpClient.h>
+#include "utils/HttpClientPool.hpp"
 #include <drogon/utils/coroutine.h>
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
-#include <vector>
 
 class EmailService {
 public:
@@ -19,6 +19,5 @@ private:
     std::string assetsUrl_;
     trantor::EventLoop* loop_;
     inja::Environment env_;
-    std::vector<drogon::HttpClientPtr> clients_;
-    size_t next_ = 0;
+    HttpClientPool clients_;
 };

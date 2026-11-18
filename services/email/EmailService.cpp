@@ -7,11 +7,9 @@ EmailService::EmailService(std::string apiKey, std::string from, const std::stri
       appUrl_(std::move(appUrl)),
       assetsUrl_(std::move(assetsUrl)),
       loop_(loop),
-      env_(templatesDir.ends_with('/') ? templatesDir : templatesDir + "/") {
+      env_(templatesDir.ends_with('/') ? templatesDir : templatesDir + "/"),
+      clients_("https://api.resend.com", static_cast<size_t>(connections)) {
     env_.set_html_autoescape(true);
-    for (int i = 0; i < connections; i++) {
-        clients_.push_back(drogon::HttpClient::newHttpClient("https://api.resend.com", loop));
-    }
 }
 
 drogon::Task<> EmailService::send(std::string to, std::string subject, std::string templateName, nlohmann::json data) {
@@ -28,8 +26,7 @@ drogon::Task<> EmailService::send(std::string to, std::string subject, std::stri
     req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     req->setBody(nlohmann::json{{"from", from_}, {"to", {to}}, {"subject", subject}, {"html", html}}.dump());
 
-    auto client = clients_[next_++ % clients_.size()];
-    auto resp = co_await client->sendRequestCoro(req, 10);
+    auto resp = co_await clients_.get()->sendRequestCoro(req, 10);
     if (resp->statusCode() >= 300) {
         throw std::runtime_error("resend returned " + std::to_string(static_cast<int>(resp->statusCode())) + ": " + std::string(resp->body()));
     }

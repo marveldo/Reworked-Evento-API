@@ -33,6 +33,8 @@ class EventsController : public drogon::HttpController<EventsController, false>
 
   private:
     Task<HttpResponsePtr> attendeesPage(HttpRequestPtr req, const std::string& eventId, const std::string& hostId);
+    Task<HttpResponsePtr> completeRegisteration(HttpRequestPtr req, std::string& id , const RegisterAttendeeInput& input );
+    Task<HttpResponsePtr> paymentRequired(const drogon_model::evento::Events& event, const RegisterAttendeeInput& input);
 
     Services* services_;
 };

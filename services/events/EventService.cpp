@@ -119,29 +119,35 @@ Task<EventPage> EventService::searchEvents(const std::string& text, const PageIn
 }
 
 Task<EventPage> EventService::userEvents(const std::string& userId, const UserEventsFilter& filter, const PageInput& page) {
-    // Only fixed SQL fragments are added here; the one user-supplied value is bound as $1.
-    std::string where = "WHERE EXISTS (SELECT 1 FROM event_users eu WHERE eu.event_id = e.id AND eu.user_id = $1) ";
-    where += filter.past ? "AND e.start_date < (NOW() AT TIME ZONE 'UTC')::date "
-                         : "AND e.start_date >= (NOW() AT TIME ZONE 'UTC')::date ";
-    if (filter.role == UserEventsFilter::Role::Hosting) where += "AND e.created_by = $1 ";
-    if (filter.role == UserEventsFilter::Role::Attending) where += "AND e.created_by IS DISTINCT FROM $1 ";
-    if (filter.price == UserEventsFilter::Price::Free) where += "AND COALESCE(e.price, 0) = 0 ";
-    if (filter.price == UserEventsFilter::Price::Paid) where += "AND e.price > 0 ";
-    const std::string order = filter.past ? "ORDER BY e.start_date DESC, e.start_time DESC, e.id "
-                                          : "ORDER BY e.start_date ASC, e.start_time ASC, e.id ";
+    const std::string today = trantor::Date::now().toCustomFormattedString("%Y-%m-%d");
+
+    Criteria criteria = Criteria("event_users.user_id", userId) &&
+                        (filter.past ? Criteria(Events::Cols::_start_date, CompareOperator::LT, today)
+                                     : Criteria(Events::Cols::_start_date, CompareOperator::GE, today));
+    if (filter.role == UserEventsFilter::Role::Hosting)
+        criteria = criteria && Criteria(Events::Cols::_created_by, userId);
+    if (filter.role == UserEventsFilter::Role::Attending)
+        criteria = criteria && (Criteria(Events::Cols::_created_by, CompareOperator::NE, userId) ||
+                                Criteria(Events::Cols::_created_by, CompareOperator::IsNull));
+    if (filter.price == UserEventsFilter::Price::Free)
+        criteria = criteria && (Criteria(Events::Cols::_price, 0) || Criteria(Events::Cols::_price, CompareOperator::IsNull));
+    if (filter.price == UserEventsFilter::Price::Paid)
+        criteria = criteria && Criteria(Events::Cols::_price, CompareOperator::GT, 0);
 
     EventPage result;
-    const auto count = co_await dbClient_->execSqlCoro("SELECT COUNT(*) AS n FROM events e " + where, userId);
-    result.count = count[0]["n"].as<size_t>();
+    CoroMapper<Events> counter(dbClient_);
+    counter.innerJoin("event_users", "event_users.event_id", "events.id");
+    result.count = co_await counter.count(criteria);
 
-    const auto rows = co_await dbClient_->execSqlCoro(
-        "SELECT " + serializers::EVENT_COLUMNS + " "
-        "FROM events e "
-        "LEFT JOIN users h ON h.id = e.created_by " +
-        where + order +
-        "LIMIT $2 OFFSET $3",
-        userId, static_cast<int64_t>(page.limit), static_cast<int64_t>(page.offset));
-    result.events = co_await serializers::events(dbClient_, rows, frontendLink_);
+    const auto sort = filter.past ? SortOrder::DESC : SortOrder::ASC;
+    CoroMapper<Events> events(dbClient_);
+    events.innerJoin("event_users", "event_users.event_id", "events.id");
+    events.orderBy(Events::Cols::_start_date, sort)
+          .orderBy(Events::Cols::_start_time, sort)
+          .orderBy(Events::Cols::_id)
+          .limit(page.limit)
+          .offset(page.offset);
+    result.events = co_await serializers::events(dbClient_, co_await events.findBy(criteria), frontendLink_);
     co_return result;
 }
 
@@ -157,7 +163,7 @@ Task<std::optional<Json::Value>> EventService::getEvent(const std::string& id) {
     co_return events[0];
 }
 
-Task<Events> EventService::geteventbyid(const std::string& eventId) {
+Task<Events> EventService::getEventById(const std::string& eventId) {
     CoroMapper<Events> events(dbClient_);
    try {
         co_return co_await events.findByPrimaryKey(eventId);
@@ -275,4 +281,21 @@ Task<RegisterResult> EventService::registerAttendee(const std::string& eventId, 
 
     events_->Publish(ATTENDEE_REGISTERED, AttendeeRegistered{eventId, *host, email});
     co_return RegisterResult::Registered;
+}
+
+Task<RegistrationStatus> EventService::checkRegistration(const std::string& eventId, const std::string& email) {
+    const auto users = co_await CoroMapper<Users>(dbClient_).findBy(Criteria(Users::Cols::_email, email));
+    if (users.empty()) co_return RegistrationStatus{};
+
+    const std::string userId = users[0].getValueOfId();
+    const size_t registered = co_await CoroMapper<EventUsers>(dbClient_).count(
+        Criteria(EventUsers::Cols::_event_id, eventId) && Criteria(EventUsers::Cols::_user_id, userId));
+    co_return RegistrationStatus{registered > 0 ? RegistrationCheck::AlreadyRegistered : RegistrationCheck::Open, userId};
+}
+
+Task<bool> EventService::addAttendee(const std::string& eventId, const std::string& userId, DbClientPtr tx) {
+    const auto client = tx ? tx : dbClient_;
+    const auto inserted = co_await client->execSqlCoro(
+        "INSERT INTO event_users (event_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", eventId, userId);
+    co_return inserted.affectedRows() > 0;
 }

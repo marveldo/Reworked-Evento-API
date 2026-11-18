@@ -4,6 +4,7 @@
 #include "queues/TaskErrors.hpp"
 #include "settings/Settings.h"
 #include <drogon/orm/Exception.h>
+#include "utils/Errors.hpp"
 
 void registerTaskHandlers(TaskQueue* queue, EmailService* email, Services* services) {
     queue->registerHandler("send_email", [email](const nlohmann::json& payload) -> drogon::Task<> {
@@ -44,4 +45,18 @@ void registerTaskHandlers(TaskQueue* queue, EmailService* email, Services* servi
     queue->registerHandler("delete_photo", [services](const nlohmann::json& payload) -> drogon::Task<> {
         co_await services->cloudinaryService->deleteByPrefix(payload.at("public_id").get<std::string>());
     }, {timed("delete_photo")});
+
+    queue->registerHandler("settle_payment", [services](const nlohmann::json& payload) -> drogon::Task<> {
+        const std::string reference = payload.at("reference").get<std::string>();
+        bool unknown = false;
+        try {
+            const auto status = co_await services->paymentService->settle(reference);
+            if (status == "pending") throw std::runtime_error("Paystack hasn't confirmed " + reference + " yet");
+        } catch (const NotFound&) {
+            unknown = true;
+        } catch (const PaymentsNotConfigured& e) {
+            throw PermanentTaskError(e.what());
+        }
+        if (unknown) throw PermanentTaskError("no order has the reference " + reference);
+    }, {timed("settle_payment")});
 }

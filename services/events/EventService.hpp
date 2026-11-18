@@ -29,6 +29,12 @@ struct UserEventsFilter {
 };
 
 enum class RegisterResult { Registered, AlreadyRegistered, EventNotFound, UserNotFound, HostNotFound };
+enum class RegistrationCheck { Open, AlreadyRegistered, UserNotFound };
+
+struct RegistrationStatus {
+    RegistrationCheck check = RegistrationCheck::UserNotFound;
+    std::string userId;
+};
 
 class EventService {
     public:
@@ -60,7 +66,11 @@ class EventService {
 
         drogon::Task<RegisterResult> registerAttendee(const std::string& eventId, const std::string& email);
 
-        drogon::Task<drogon_model::evento::Events> geteventbyid(const std::string& eventId );
+        drogon::Task<RegistrationStatus> checkRegistration(const std::string& eventId, const std::string& email);
+
+        drogon::Task<bool> addAttendee(const std::string& eventId, const std::string& userId, drogon::orm::DbClientPtr tx = nullptr);
+
+        drogon::Task<drogon_model::evento::Events> getEventById(const std::string& eventId );
 
     private:
         drogon::orm::DbClientPtr dbClient_;

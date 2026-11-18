@@ -8,6 +8,9 @@
 #include "media/CloudinaryService.hpp"
 #include "google/GoogleAuthService.hpp"
 #include "geo/GeoService.hpp"
+#include "orders/OrderService.hpp"
+#include "payments/PaymentService.hpp"
+#include "utils/DbTransaction.hpp"
 #include "settings/Settings.h"
 #include "events/EventBus.hpp"
 #include <drogon/orm/DbClient.h>
@@ -23,8 +26,10 @@ class Services {
         CloudinaryService* cloudinaryService;
         GoogleAuthService* googleAuthService;
         GeoService* geoService;
+        OrderService* orderService;
+        PaymentService* paymentService;
 
-    explicit Services(drogon::orm::DbClientPtr dbClient, Settings& settings, EventBus* events) {
+    explicit Services(drogon::orm::DbClientPtr dbClient, Settings& settings, EventBus* events) : dbClient_(dbClient) {
         jwtService = new JwtService(
             settings.jwt.accessSecret,
             settings.jwt.refreshSecret,
@@ -36,6 +41,10 @@ class Services {
         userService = new UserService(dbClient, events, settings.frontendLink);
         deviceService = new DeviceService(dbClient, events, jwtService);
         eventService = new EventService(dbClient, events, settings.frontendLink);
+        orderService = new OrderService(dbClient);
+        paymentService = new PaymentService(settings.paystack.apiKey, settings.paystack.url,
+                                            settings.frontendLink + "/payments/callback", dbClient,
+                                            orderService, eventService, events);
         notificationService = new NotificationService(dbClient, realtimeService);
         cloudinaryService = new CloudinaryService(
             settings.cloudinary.cloudName,
@@ -57,7 +66,16 @@ class Services {
         delete cloudinaryService;
         delete googleAuthService;
         delete geoService;
+        delete paymentService;
+        delete orderService;
     }
+
+    drogon::Task<> withTransaction(std::function<drogon::Task<>(drogon::orm::DbClientPtr tx)> work) {
+        co_await ::withTransaction(dbClient_, std::move(work));
+    }
+
+    private:
+        drogon::orm::DbClientPtr dbClient_;
 };
 
 Services* getServices(drogon::orm::DbClientPtr dbClient, Settings& settings, EventBus* events);

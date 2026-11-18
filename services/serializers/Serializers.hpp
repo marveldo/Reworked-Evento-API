@@ -7,6 +7,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "models/Events.h"
+#include "models/Users.h"
 
 namespace serializers {
 
@@ -22,6 +24,10 @@ Json::Value event(const drogon::orm::Row& row, const std::string& frontendLink);
 drogon::Task<std::unordered_map<std::string, Json::Value>> tagsFor(drogon::orm::DbClientPtr db, std::vector<std::string> eventIds);
 
 drogon::Task<Json::Value> events(drogon::orm::DbClientPtr db, drogon::orm::Result rows, std::string frontendLink);
+
+Json::Value event(const drogon_model::evento::Events& event, const drogon_model::evento::Users* host, const std::string& frontendLink);
+
+drogon::Task<Json::Value> events(drogon::orm::DbClientPtr db, std::vector<drogon_model::evento::Events> list, std::string frontendLink);
 
 drogon::Task<Json::Value> users(drogon::orm::DbClientPtr db, std::vector<std::string> ids, std::string frontendLink);
 

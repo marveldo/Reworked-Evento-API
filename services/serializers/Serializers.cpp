@@ -1,9 +1,13 @@
 #include "Serializers.hpp"
+#include <drogon/orm/CoroMapper.h>
+#include <unordered_set>
 
 using drogon::Task;
 using drogon::orm::DbClientPtr;
 using drogon::orm::Result;
 using drogon::orm::Row;
+using drogon_model::evento::Events;
+using drogon_model::evento::Users;
 
 namespace {
     Json::Value text(const drogon::orm::Field& field) {
@@ -12,6 +16,18 @@ namespace {
 
     Json::Value integer(const drogon::orm::Field& field) {
         return field.isNull() ? Json::Value() : Json::Value(static_cast<Json::Int64>(field.as<int64_t>()));
+    }
+
+    Json::Value text(const std::shared_ptr<std::string>& value) {
+        return value ? Json::Value(*value) : Json::Value();
+    }
+
+    Json::Value integer(const std::shared_ptr<int32_t>& value) {
+        return value ? Json::Value(static_cast<Json::Int64>(*value)) : Json::Value();
+    }
+
+    Json::Value day(const std::shared_ptr<trantor::Date>& value) {
+        return value ? Json::Value(value->toCustomFormattedStringLocal("%Y-%m-%d")) : Json::Value();
     }
 }
 
@@ -71,6 +87,60 @@ Task<std::unordered_map<std::string, Json::Value>> tagsFor(DbClientPtr db, std::
         list.append(tag);
     }
     co_return tags;
+}
+
+Json::Value event(const Events& event, const Users* host, const std::string& frontendLink) {
+    Json::Value e;
+    e["id"]          = event.getValueOfId();
+    e["event_name"]  = text(event.getEventName());
+    e["date"]        = day(event.getDate());
+    e["description"] = text(event.getDescription());
+    e["price"]       = integer(event.getPrice());
+    e["location"]    = text(event.getLocation());
+    e["event_image"] = text(event.getEventImage());
+    e["time"]        = text(event.getTime());
+    e["start_date"]  = day(event.getStartDate());
+    e["start_time"]  = text(event.getStartTime());
+    e["capacity"]    = integer(event.getCapacity());
+    e["category"]    = Json::Value(Json::arrayValue);
+    e["event_link"]  = frontendLink + "/events/" + e["id"].asString() + "/";
+
+    Json::Value hostJson(Json::objectValue);
+    if (host) {
+        hostJson["id"]          = host->getValueOfId();
+        hostJson["full_name"]   = text(host->getFullName());
+        hostJson["email"]       = text(host->getEmail());
+        hostJson["profile_img"] = text(host->getProfileImg());
+    }
+    e["hosted_by"] = hostJson;
+    return e;
+}
+
+Task<Json::Value> events(DbClientPtr db, std::vector<Events> list, std::string frontendLink) {
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> hostIds;
+    std::vector<std::string> eventIds;
+    for (const auto& item : list) {
+        eventIds.push_back(item.getValueOfId());
+        if (item.getCreatedBy() && seen.insert(item.getValueOfCreatedBy()).second) hostIds.push_back(item.getValueOfCreatedBy());
+    }
+
+    std::unordered_map<std::string, Users> hosts;
+    if (!hostIds.empty()) {
+        const auto users = co_await drogon::orm::CoroMapper<Users>(db).findBy(
+            drogon::orm::Criteria(Users::Cols::_id, drogon::orm::CompareOperator::In, hostIds));
+        for (const auto& user : users) hosts.emplace(user.getValueOfId(), user);
+    }
+
+    const auto tags = co_await tagsFor(db, eventIds);
+    Json::Value result(Json::arrayValue);
+    for (const auto& item : list) {
+        const auto host = item.getCreatedBy() ? hosts.find(item.getValueOfCreatedBy()) : hosts.end();
+        auto e = event(item, host == hosts.end() ? nullptr : &host->second, frontendLink);
+        if (const auto it = tags.find(item.getValueOfId()); it != tags.end()) e["category"] = it->second;
+        result.append(e);
+    }
+    co_return result;
 }
 
 Task<Json::Value> events(DbClientPtr db, Result rows, std::string frontendLink) {

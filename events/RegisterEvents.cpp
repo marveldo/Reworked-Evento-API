@@ -29,4 +29,8 @@ void RegisterEvents(EventBus* bus, TaskQueue* queue) {
     bus->Subscribe<PhotoUnused>(PHOTO_UNUSED, [queue](PhotoUnused event) {
         queue->enqueue("delete_photo", {{"public_id", event.publicId}});
     });
+
+    bus->Subscribe<PaymentReceived>(PAYMENT_RECEIVED, [queue](PaymentReceived event) {
+        queue->enqueue("settle_payment", {{"reference", event.reference}});
+    });
 }

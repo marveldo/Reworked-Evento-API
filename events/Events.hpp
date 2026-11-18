@@ -6,6 +6,7 @@ inline const std::string DEVICE_LOGGED_IN     = "device.logged_in";
 inline const std::string DEVICE_LOGGED_OUT    = "device.logged_out";
 inline const std::string ATTENDEE_REGISTERED  = "event.attendee_registered";
 inline const std::string PHOTO_UNUSED         = "photo.unused";
+inline const std::string PAYMENT_RECEIVED     = "payment.received";
 
 struct UserCreated {
     std::string id;
@@ -31,4 +32,8 @@ struct AttendeeRegistered {
 
 struct PhotoUnused {
     std::string publicId;
+};
+
+struct PaymentReceived {
+    std::string reference;
 };

@@ -8,6 +8,8 @@
 #include "controllers/PhotosController.h"
 #include "controllers/NotificationsSocketController.h"
 #include "controllers/NotificationsController.h"
+#include "controllers/PaymentsController.h"
+#include "controllers/OrdersController.h"
 #include "services/Services.hpp"
 #include "bootstrap/Bootstrap.hpp"
 #include "utils/Errors.hpp"
@@ -74,6 +76,8 @@ int main() {
     drogon::app().registerController(std::make_shared<EventsController>(service));
     drogon::app().registerController(std::make_shared<PhotosController>(service));
     drogon::app().registerController(std::make_shared<NotificationsController>(service));
+    drogon::app().registerController(std::make_shared<PaymentsController>(service));
+    drogon::app().registerController(std::make_shared<OrdersController>(service));
     drogon::app().registerController(std::make_shared<NotificationsSocketController>(service));
     drogon::app().registerController(std::make_shared<HomeSocketController>(service));
     drogon::app().setExceptionHandler(handleException);

@@ -363,6 +363,78 @@
             "example": "Not Authorized"
           }
         }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reference": {
+            "type": "string",
+            "example": "evt_9f1c\u2026"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "success",
+              "failed",
+              "abandoned",
+              "refunded"
+            ]
+          },
+          "amount": {
+            "type": "integer",
+            "description": "In kobo (100 = \u20a61)"
+          },
+          "currency": {
+            "type": "string",
+            "example": "NGN"
+          },
+          "email": {
+            "type": "string"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "paid_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event": {
+            "type": "object",
+            "nullable": true,
+            "description": "The event this order is for (null if it was deleted). Included by GET /orders/ and /orders/{id}/.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_name": {
+                "type": "string",
+                "nullable": true
+              },
+              "event_image": {
+                "type": "string",
+                "nullable": true
+              },
+              "start_date": {
+                "type": "string",
+                "format": "date",
+                "nullable": true
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -1703,7 +1775,7 @@
         "tags": [
           "events"
         ],
-        "summary": "Register a user for the event (the host gets a notification)",
+        "summary": "Register for the event: free events register now, paid events start a Paystack checkout",
         "security": [
           {
             "bearer": []
@@ -1717,22 +1789,6 @@
             "schema": {
               "type": "string",
               "format": "uuid"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 100
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 0
             }
           }
         ],
@@ -1768,8 +1824,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Registered: the attendees page",
+          "201": {
+            "description": "Free event: registered (the host gets a notification)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1778,38 +1834,68 @@
                     "status": {
                       "type": "integer"
                     },
-                    "links": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
                       "type": "object",
                       "properties": {
-                        "next_link": {
+                        "status": {
                           "type": "string",
-                          "nullable": true
+                          "enum": [
+                            "registered"
+                          ]
                         },
-                        "previous_link": {
+                        "event_id": {
                           "type": "string",
-                          "nullable": true
+                          "format": "uuid"
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Paid event: not registered yet. Send the user to authorization_url; they're registered once Paystack confirms the payment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
                     },
                     "message": {
                       "type": "string"
                     },
-                    "limit": {
-                      "type": "integer"
-                    },
-                    "offset": {
-                      "type": "integer"
-                    },
-                    "count": {
-                      "type": "integer"
-                    },
-                    "total_pages": {
-                      "type": "integer"
-                    },
                     "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/User"
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "payment_required"
+                          ]
+                        },
+                        "event_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "description": "Event price in naira"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "reference": {
+                          "type": "string"
+                        },
+                        "authorization_url": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -1822,21 +1908,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "integer"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           },
-          "401": {
-            "description": "Not logged in, or the token is no longer valid",
+          "404": {
+            "description": "Event or user not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1845,20 +1923,22 @@
               }
             }
           },
-          "404": {
-            "description": "No such event or user",
+          "502": {
+            "description": "Paystack couldn't start the checkout",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "integer"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Payments aren't configured (PAYSTACK_SECRET_KEY missing)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -1929,6 +2009,255 @@
           },
           "429": {
             "description": "Too many signatures"
+          }
+        }
+      }
+    },
+    "/api/v1/payments/webhook/": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Paystack webhook. Checks x-paystack-signature (HMAC-SHA512 of the body with the secret key); charge.success queues the settle task.",
+        "parameters": [
+          {
+            "name": "x-paystack-signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Received"
+          },
+          "401": {
+            "description": "Bad or missing signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/{reference}/verify/": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Confirm a payment with Paystack now (used by the checkout callback page). Safe to call repeatedly.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The order after checking: success, pending (Paystack hasn't confirmed yet) or failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Order"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such order for this user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Paystack couldn't be reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "The logged-in user's orders, newest first",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of orders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Order"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "One of the logged-in user's orders",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Order"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

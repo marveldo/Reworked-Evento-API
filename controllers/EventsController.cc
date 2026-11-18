@@ -108,9 +108,53 @@ Task<HttpResponsePtr> EventsController::RegisterAttendee(HttpRequestPtr req, std
     auto parsed = parseRegisterAttendee(body.fields);
     if (auto* errors = std::get_if<std::vector<FieldError>>(&parsed)) co_return res::validation(*errors);
     const auto& input = std::get<RegisterAttendeeInput>(parsed);
-    // auto event_details = coawait services_-> geteventbyId(id);
-    
+    const auto event_details = co_await services_->eventService->getEventById(id);
 
+    if (event_details.getValueOfPrice() <= 0) co_return co_await completeRegisteration(req, id, input);
+    co_return co_await paymentRequired(event_details, input);
+}
+
+Task<HttpResponsePtr> EventsController::paymentRequired(const drogon_model::evento::Events& event, const RegisterAttendeeInput& input) {
+    if (!event.getCreatedBy()) co_return res::success(k404NotFound, "Detail Not Found");
+
+    const auto registration = co_await services_->eventService->checkRegistration(event.getValueOfId(), input.email);
+    switch (registration.check) {
+        case RegistrationCheck::UserNotFound:      co_return res::success(k404NotFound, "Detail Not Found");
+        case RegistrationCheck::AlreadyRegistered: co_return res::success(k400BadRequest, "User Already registered");
+        case RegistrationCheck::Open:              break;
+    }
+
+    auto& payments = *services_->paymentService;
+    if (!payments.configured()) co_return res::error(k503ServiceUnavailable, "Payments aren't available right now.");
+
+    const auto order = co_await services_->orderService->create({
+        registration.userId, event.getValueOfId(), input.email, static_cast<int64_t>(event.getValueOfPrice()) * 100});
+
+    Checkout checkout;
+    bool started = false;
+    try {
+        checkout = co_await payments.initialize({order.getValueOfEmail(), order.getValueOfAmount(),
+                                                 order.getValueOfCurrency(), order.getValueOfReference()});
+        started = true;
+    } catch (const std::exception& e) {
+        LOG_WARN << "Paystack checkout for " << order.getValueOfReference() << " failed: " << e.what();
+    }
+    if (!started) {
+        co_await services_->orderService->markFailed(order.getValueOfReference(), "failed");
+        co_return res::error(k502BadGateway, "Couldn't start the payment with Paystack right now. Try again shortly.");
+    }
+
+    Json::Value data;
+    data["status"]            = "payment_required";
+    data["event_id"]          = event.getValueOfId();
+    data["amount"]            = event.getValueOfPrice();
+    data["currency"]          = order.getValueOfCurrency();
+    data["reference"]         = order.getValueOfReference();
+    data["authorization_url"] = checkout.authorizationUrl;
+    co_return res::success(k200OK, "Payment required", data);
+}
+
+Task<HttpResponsePtr> EventsController::completeRegisteration(HttpRequestPtr req, std::string& id , const RegisterAttendeeInput& input ){
     switch (co_await services_->eventService->registerAttendee(id, input.email)) {
         case RegisterResult::EventNotFound:     co_return res::notFound(EVENT_NOT_FOUND);
         case RegisterResult::UserNotFound:
@@ -119,11 +163,10 @@ Task<HttpResponsePtr> EventsController::RegisterAttendee(HttpRequestPtr req, std
         case RegisterResult::Registered:        break;
     }
 
-    bool exists = false;
-    const auto host = co_await services_->eventService->hostOf(id, exists);
-    if (!exists) co_return res::notFound(EVENT_NOT_FOUND);
-    if (!host) co_return res::success(k404NotFound, "Detail Not Found");
-    co_return co_await attendeesPage(req, id, *host);
+    Json::Value data;
+    data["status"]   = "registered";
+    data["event_id"] = id;
+    co_return res::success(k201Created, "Registered", data);
 }
 
 Task<HttpResponsePtr> EventsController::attendeesPage(HttpRequestPtr req, const std::string& eventId, const std::string& hostId) {

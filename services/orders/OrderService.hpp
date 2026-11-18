@@ -34,6 +34,10 @@ class OrderService {
 
         drogon::Task<Orders> getByReference(const std::string& reference, drogon::orm::DbClientPtr tx = nullptr);
 
+        drogon::Task<std::optional<Orders>> findPending(const std::string& eventId, const std::string& userId);
+
+        drogon::Task<> setAuthorizationUrl(const std::string& id, const std::string& url);
+
         drogon::Task<OrderPage> listForUser(const std::string& userId, const PageInput& page);
 
         drogon::Task<OrderPage> listForEvent(const std::string& eventId, const PageInput& page);

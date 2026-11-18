@@ -31,6 +31,7 @@ Json::Value OrderService::toJson(const Orders& order) {
     item["currency"]   = order.getValueOfCurrency();
     item["email"]      = order.getValueOfEmail();
     item["event_id"]   = text(order.getEventId());
+    item["checkout_url"] = text(order.getAuthorizationUrl());
     item["paid_at"]    = timestamp(order.getPaidAt());
     item["created_at"] = timestamp(order.getCreatedAt());
     return item;
@@ -94,6 +95,21 @@ Task<Orders> OrderService::getByReference(const std::string& reference, DbClient
     const auto orders = co_await CoroMapper<Orders>(client(tx)).findBy(Criteria(Orders::Cols::_reference, reference));
     if (orders.empty()) throw NotFound("Order not found");
     co_return orders[0];
+}
+
+Task<std::optional<Orders>> OrderService::findPending(const std::string& eventId, const std::string& userId) {
+    const auto orders = co_await CoroMapper<Orders>(dbClient_)
+                            .orderBy(Orders::Cols::_created_at, SortOrder::DESC)
+                            .limit(1)
+                            .findBy(Criteria(Orders::Cols::_event_id, eventId) && Criteria(Orders::Cols::_user_id, userId) &&
+                                    Criteria(Orders::Cols::_status, std::string("pending")));
+    if (orders.empty()) co_return std::nullopt;
+    co_return orders[0];
+}
+
+Task<> OrderService::setAuthorizationUrl(const std::string& id, const std::string& url) {
+    const std::vector<std::string> column{Orders::Cols::_authorization_url};
+    co_await CoroMapper<Orders>(dbClient_).updateBy(column, Criteria(Orders::Cols::_id, id), url);
 }
 
 Task<OrderPage> OrderService::list(const std::string& column, const std::string& value, const PageInput& page) {

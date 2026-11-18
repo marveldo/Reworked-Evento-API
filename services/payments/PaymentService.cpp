@@ -98,6 +98,7 @@ void PaymentService::queueSettle(const std::string& reference) {
 Task<std::string> PaymentService::settle(const std::string& reference) {
     const auto order = co_await orders_->getByReference(reference);
     if (order.getValueOfStatus() != "pending") co_return order.getValueOfStatus();
+    if (!order.getAuthorizationUrl()) co_return "pending";
 
     const auto remote = co_await verify(reference);
 

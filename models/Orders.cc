@@ -45,6 +45,8 @@ const std::string Orders::Cols::_created_at = "\"created_at\"";
 
 const std::string Orders::Cols::_updated_at = "\"updated_at\"";
 
+const std::string Orders::Cols::_authorization_url = "\"authorization_url\"";
+
 
 const std::string Orders::primaryKeyName = "id";
 
@@ -64,7 +66,8 @@ const std::vector<typename Orders::MetaData> Orders::metaData_={
 {"status","std::string","character varying",20,0,0,1},
 {"paid_at","::trantor::Date","timestamp with time zone",0,0,0,0},
 {"created_at","::trantor::Date","timestamp with time zone",0,0,0,1},
-{"updated_at","::trantor::Date","timestamp with time zone",0,0,0,1}
+{"updated_at","::trantor::Date","timestamp with time zone",0,0,0,1},
+{"authorization_url","std::string","character varying",500,0,0,0}
 
 };
 const std::string &Orders::getColumnName(size_t index) noexcept(false)
@@ -205,11 +208,18 @@ Orders::Orders(const Row &r, const ssize_t indexOffset) noexcept
             }
         }
 
+        if(!r["authorization_url"].isNull())
+        {
+
+            authorizationUrl_=std::make_shared<std::string>(r["authorization_url"].as<std::string>());
+
+        }
+
     }
     else
     {
         size_t offset = (size_t)indexOffset;
-        if(offset + 11 > r.size())
+        if(offset + 12 > r.size())
         {
             LOG_FATAL << "Invalid SQL result for this model";
             return;
@@ -355,13 +365,21 @@ Orders::Orders(const Row &r, const ssize_t indexOffset) noexcept
             }
         }
 
+        index = offset + 11;
+        if(!r[index].isNull())
+        {
+
+            authorizationUrl_=std::make_shared<std::string>(r[index].as<std::string>());
+
+        }
+
     }
 
 }
 
 Orders::Orders(const Json::Value &pJson, const std::vector<std::string> &pMasqueradingVector) noexcept(false)
 {
-    if(pMasqueradingVector.size() != 11)
+    if(pMasqueradingVector.size() != 12)
     {
         LOG_ERROR << "Bad masquerading vector";
         return;
@@ -520,6 +538,15 @@ Orders::Orders(const Json::Value &pJson, const std::vector<std::string> &pMasque
                 }
                 updatedAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
+        }
+    }
+
+    if(!pMasqueradingVector[11].empty() && pJson.isMember(pMasqueradingVector[11]))
+    {
+        dirtyFlag_[11] = true;
+        if(!pJson[pMasqueradingVector[11]].isNull())
+        {
+            authorizationUrl_=std::make_shared<std::string>(pJson[pMasqueradingVector[11]].asString());
         }
     }
 
@@ -684,12 +711,21 @@ Orders::Orders(const Json::Value &pJson) noexcept(false)
         }
     }
 
+    if(pJson.isMember("authorization_url"))
+    {
+        dirtyFlag_[11]=true;
+        if(!pJson["authorization_url"].isNull())
+        {
+            authorizationUrl_=std::make_shared<std::string>(pJson["authorization_url"].asString());
+        }
+    }
+
 }
 
 void Orders::updateByMasqueradedJson(const Json::Value &pJson,
                                             const std::vector<std::string> &pMasqueradingVector) noexcept(false)
 {
-    if(pMasqueradingVector.size() != 11)
+    if(pMasqueradingVector.size() != 12)
     {
         LOG_ERROR << "Bad masquerading vector";
         return;
@@ -850,6 +886,15 @@ void Orders::updateByMasqueradedJson(const Json::Value &pJson,
         }
     }
 
+    if(!pMasqueradingVector[11].empty() && pJson.isMember(pMasqueradingVector[11]))
+    {
+        dirtyFlag_[11] = true;
+        if(!pJson[pMasqueradingVector[11]].isNull())
+        {
+            authorizationUrl_=std::make_shared<std::string>(pJson[pMasqueradingVector[11]].asString());
+        }
+    }
+
 }
 
 void Orders::updateByJson(const Json::Value &pJson) noexcept(false)
@@ -1007,6 +1052,15 @@ void Orders::updateByJson(const Json::Value &pJson) noexcept(false)
                 }
                 updatedAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
+        }
+    }
+
+    if(pJson.isMember("authorization_url"))
+    {
+        dirtyFlag_[11] = true;
+        if(!pJson["authorization_url"].isNull())
+        {
+            authorizationUrl_=std::make_shared<std::string>(pJson["authorization_url"].asString());
         }
     }
 
@@ -1254,6 +1308,33 @@ void Orders::setUpdatedAt(const ::trantor::Date &pUpdatedAt) noexcept
     dirtyFlag_[10] = true;
 }
 
+const std::string &Orders::getValueOfAuthorizationUrl() const noexcept
+{
+    static const std::string defaultValue = std::string();
+    if(authorizationUrl_)
+        return *authorizationUrl_;
+    return defaultValue;
+}
+const std::shared_ptr<std::string> &Orders::getAuthorizationUrl() const noexcept
+{
+    return authorizationUrl_;
+}
+void Orders::setAuthorizationUrl(const std::string &pAuthorizationUrl) noexcept
+{
+    authorizationUrl_ = std::make_shared<std::string>(pAuthorizationUrl);
+    dirtyFlag_[11] = true;
+}
+void Orders::setAuthorizationUrl(std::string &&pAuthorizationUrl) noexcept
+{
+    authorizationUrl_ = std::make_shared<std::string>(std::move(pAuthorizationUrl));
+    dirtyFlag_[11] = true;
+}
+void Orders::setAuthorizationUrlToNull() noexcept
+{
+    authorizationUrl_.reset();
+    dirtyFlag_[11] = true;
+}
+
 void Orders::updateId(const uint64_t id)
 {
 }
@@ -1272,7 +1353,8 @@ const std::vector<std::string> &Orders::insertColumns() noexcept
         "status",
         "paid_at",
         "created_at",
-        "updated_at"
+        "updated_at",
+        "authorization_url"
 
     };
     return inCols;
@@ -1413,6 +1495,18 @@ void Orders::outputArgs(drogon::orm::internal::SqlBinder &binder) const
         }
     }
 
+    if(dirtyFlag_[11])
+    {
+        if(getAuthorizationUrl())
+        {
+            binder << getValueOfAuthorizationUrl();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
+
 }
 
 const std::vector<std::string> Orders::updateColumns() const
@@ -1472,6 +1566,11 @@ const std::vector<std::string> Orders::updateColumns() const
     if(dirtyFlag_[10])
     {
         ret.push_back(getColumnName(10));
+    }
+
+    if(dirtyFlag_[11])
+    {
+        ret.push_back(getColumnName(11));
     }
 
     return ret;
@@ -1612,6 +1711,18 @@ void Orders::updateArgs(drogon::orm::internal::SqlBinder &binder) const
         }
     }
 
+    if(dirtyFlag_[11])
+    {
+        if(getAuthorizationUrl())
+        {
+            binder << getValueOfAuthorizationUrl();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
+
 }
 Json::Value Orders::toJson() const
 {
@@ -1738,6 +1849,17 @@ Json::Value Orders::toJson() const
         ret["updated_at"]=Json::Value();
     }
 
+    if(getAuthorizationUrl())
+    {
+
+        ret["authorization_url"]=getValueOfAuthorizationUrl();
+
+    }
+    else
+    {
+        ret["authorization_url"]=Json::Value();
+    }
+
     return ret;
 }
 
@@ -1750,7 +1872,7 @@ Json::Value Orders::toMasqueradedJson(
     const std::vector<std::string> &pMasqueradingVector) const
 {
     Json::Value ret;
-    if(pMasqueradingVector.size() == 11)
+    if(pMasqueradingVector.size() == 12)
     {
 
         if(!pMasqueradingVector[0].empty())
@@ -1907,6 +2029,20 @@ Json::Value Orders::toMasqueradedJson(
             }
         }
 
+        if(!pMasqueradingVector[11].empty())
+        {
+            if(getAuthorizationUrl())
+            {
+
+                ret[pMasqueradingVector[11]]=getValueOfAuthorizationUrl();
+
+            }
+            else
+            {
+                ret[pMasqueradingVector[11]]=Json::Value();
+            }
+        }
+
         return ret;
     }
     LOG_ERROR << "Masquerade failed";
@@ -2032,6 +2168,17 @@ Json::Value Orders::toMasqueradedJson(
         ret["updated_at"]=Json::Value();
     }
 
+    if(getAuthorizationUrl())
+    {
+
+        ret["authorization_url"]=getValueOfAuthorizationUrl();
+
+    }
+    else
+    {
+        ret["authorization_url"]=Json::Value();
+    }
+
     return ret;
 }
 
@@ -2122,13 +2269,19 @@ bool Orders::validateJsonForCreation(const Json::Value &pJson, std::string &err)
             return false;
     }
 
+    if(pJson.isMember("authorization_url"))
+    {
+        if(!validJsonOfField(11, "authorization_url", pJson["authorization_url"], err, true))
+            return false;
+    }
+
     return true;
 }
 bool Orders::validateMasqueradedJsonForCreation(const Json::Value &pJson,
                                                 const std::vector<std::string> &pMasqueradingVector,
                                                 std::string &err)
 {
-    if(pMasqueradingVector.size() != 11)
+    if(pMasqueradingVector.size() != 12)
     {
         err = "Bad masquerading vector";
         return false;
@@ -2263,6 +2416,16 @@ bool Orders::validateMasqueradedJsonForCreation(const Json::Value &pJson,
 
       }
 
+      if(!pMasqueradingVector[11].empty())
+      {
+          if(pJson.isMember(pMasqueradingVector[11]))
+          {
+              if(!validJsonOfField(11, pMasqueradingVector[11], pJson[pMasqueradingVector[11]], err, true))
+                  return false;
+          }
+
+      }
+
     }
     catch(const Json::LogicError &e)
     {
@@ -2346,13 +2509,19 @@ bool Orders::validateJsonForUpdate(const Json::Value &pJson, std::string &err)
             return false;
     }
 
+    if(pJson.isMember("authorization_url"))
+    {
+        if(!validJsonOfField(11, "authorization_url", pJson["authorization_url"], err, false))
+            return false;
+    }
+
     return true;
 }
 bool Orders::validateMasqueradedJsonForUpdate(const Json::Value &pJson,
                                               const std::vector<std::string> &pMasqueradingVector,
                                               std::string &err)
 {
-    if(pMasqueradingVector.size() != 11)
+    if(pMasqueradingVector.size() != 12)
     {
         err = "Bad masquerading vector";
         return false;
@@ -2428,6 +2597,12 @@ bool Orders::validateMasqueradedJsonForUpdate(const Json::Value &pJson,
       if(!pMasqueradingVector[10].empty() && pJson.isMember(pMasqueradingVector[10]))
       {
           if(!validJsonOfField(10, pMasqueradingVector[10], pJson[pMasqueradingVector[10]], err, false))
+              return false;
+      }
+
+      if(!pMasqueradingVector[11].empty() && pJson.isMember(pMasqueradingVector[11]))
+      {
+          if(!validJsonOfField(11, pMasqueradingVector[11], pJson[pMasqueradingVector[11]], err, false))
               return false;
       }
 
@@ -2648,6 +2823,29 @@ bool Orders::validJsonOfField(size_t index,
             if(!pJson.isString())
             {
                 err="Type error in the "+fieldName+" field";
+                return false;
+            }
+
+            break;
+
+        case 11:
+
+            if(pJson.isNull())
+            {
+                return true;
+            }
+
+            if(!pJson.isString())
+            {
+                err="Type error in the "+fieldName+" field";
+                return false;
+            }
+
+            if(pJson.isString() && drogon::utils::utf8Length(pJson.asCString()) > 500)
+            {
+                err="String length exceeds limit for the " +
+                    fieldName +
+                    " field (the maximum value is 500)";
                 return false;
             }
 

@@ -124,34 +124,25 @@ Task<HttpResponsePtr> EventsController::paymentRequired(const drogon_model::even
         case RegistrationCheck::Open:              break;
     }
 
-    auto& payments = *services_->paymentService;
-    if (!payments.configured()) co_return res::error(k503ServiceUnavailable, "Payments aren't available right now.");
+    const int64_t amount = static_cast<int64_t>(event.getValueOfPrice()) * 100;
+    auto& orders = *services_->orderService;
 
-    const auto order = co_await services_->orderService->create({
-        registration.userId, event.getValueOfId(), input.email, static_cast<int64_t>(event.getValueOfPrice()) * 100});
+    std::optional<Orders> order = co_await orders.findPending(event.getValueOfId(), registration.userId);
+    if (order && order->getValueOfAmount() != amount) {
+        co_await orders.markFailed(order->getValueOfReference(), "abandoned");
+        order.reset();
+    }
+    const bool created = !order;
+    if (created) order = co_await orders.create({registration.userId, event.getValueOfId(), input.email, amount});
 
-    Checkout checkout;
-    bool started = false;
-    try {
-        checkout = co_await payments.initialize({order.getValueOfEmail(), order.getValueOfAmount(),
-                                                 order.getValueOfCurrency(), order.getValueOfReference()});
-        started = true;
-    } catch (const std::exception& e) {
-        LOG_WARN << "Paystack checkout for " << order.getValueOfReference() << " failed: " << e.what();
-    }
-    if (!started) {
-        co_await services_->orderService->markFailed(order.getValueOfReference(), "failed");
-        co_return res::error(k502BadGateway, "Couldn't start the payment with Paystack right now. Try again shortly.");
-    }
+    const std::vector<Orders> one{*order};
+    const auto items = co_await orders.withEvents(one);
 
     Json::Value data;
-    data["status"]            = "payment_required";
-    data["event_id"]          = event.getValueOfId();
-    data["amount"]            = event.getValueOfPrice();
-    data["currency"]          = order.getValueOfCurrency();
-    data["reference"]         = order.getValueOfReference();
-    data["authorization_url"] = checkout.authorizationUrl;
-    co_return res::success(k200OK, "Payment required", data);
+    data["status"]   = "payment_required";
+    data["event_id"] = event.getValueOfId();
+    data["order"]    = items[0];
+    co_return res::success(created ? k201Created : k200OK, created ? "Order created" : "You already have a pending order", data);
 }
 
 Task<HttpResponsePtr> EventsController::completeRegisteration(HttpRequestPtr req, std::string& id , const RegisterAttendeeInput& input ){

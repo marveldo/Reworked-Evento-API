@@ -433,6 +433,11 @@
                 "nullable": true
               }
             }
+          },
+          "checkout_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "Paystack checkout link, once POST /orders/{id}/checkout/ has started the payment"
           }
         }
       }
@@ -1775,7 +1780,7 @@
         "tags": [
           "events"
         ],
-        "summary": "Register for the event: free events register now, paid events start a Paystack checkout",
+        "summary": "Register for the event: free events register now; paid events create (or reuse) a pending order",
         "security": [
           {
             "bearer": []
@@ -1825,80 +1830,67 @@
         },
         "responses": {
           "201": {
-            "description": "Free event: registered (the host gets a notification)",
+            "description": "Free event: registered ({status: registered}). Paid event: a new pending order ({status: payment_required, order}); nothing is sent to Paystack until POST /orders/{id}/checkout/.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "integer"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
+                  "oneOf": [
+                    {
                       "type": "object",
                       "properties": {
                         "status": {
-                          "type": "string",
-                          "enum": [
-                            "registered"
-                          ]
+                          "type": "integer"
                         },
-                        "event_id": {
-                          "type": "string",
-                          "format": "uuid"
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "registered"
+                              ]
+                            },
+                            "event_id": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
                         }
                       }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Paid event: not registered yet. Send the user to authorization_url; they're registered once Paystack confirms the payment.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "integer"
                     },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
+                    {
                       "type": "object",
                       "properties": {
                         "status": {
-                          "type": "string",
-                          "enum": [
-                            "payment_required"
-                          ]
+                          "type": "integer"
                         },
-                        "event_id": {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        "amount": {
-                          "type": "integer",
-                          "description": "Event price in naira"
-                        },
-                        "currency": {
+                        "message": {
                           "type": "string"
                         },
-                        "reference": {
-                          "type": "string"
-                        },
-                        "authorization_url": {
-                          "type": "string"
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "payment_required"
+                              ]
+                            },
+                            "event_id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "order": {
+                              "$ref": "#/components/schemas/Order"
+                            }
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -1923,22 +1915,38 @@
               }
             }
           },
-          "502": {
-            "description": "Paystack couldn't start the checkout",
+          "200": {
+            "description": "Paid event: you already have a pending order for it; that order is returned",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Payments aren't configured (PAYSTACK_SECRET_KEY missing)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "payment_required"
+                          ]
+                        },
+                        "event_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "order": {
+                          "$ref": "#/components/schemas/Order"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2251,6 +2259,101 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/checkout/": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Start (or resume) the Paystack checkout for a pending order. Repeated calls return the same link.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Send the user to authorization_url",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "reference": {
+                          "type": "string"
+                        },
+                        "authorization_url": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Order isn't pending, the event is gone, or you're already registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such order for this user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Paystack couldn't start the checkout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Payments aren't configured",
             "content": {
               "application/json": {
                 "schema": {

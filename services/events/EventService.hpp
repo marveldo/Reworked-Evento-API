@@ -1,6 +1,7 @@
 #pragma once
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
+#include "models/Events.h"
 #include <json/json.h>
 #include <optional>
 #include <string>
@@ -58,6 +59,8 @@ class EventService {
         drogon::Task<AttendeePage> attendees(const std::string& eventId, const std::string& hostId, const PageInput& page);
 
         drogon::Task<RegisterResult> registerAttendee(const std::string& eventId, const std::string& email);
+
+        drogon::Task<drogon_model::evento::Events> geteventbyid(const std::string& eventId );
 
     private:
         drogon::orm::DbClientPtr dbClient_;

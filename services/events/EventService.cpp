@@ -3,10 +3,27 @@
 #include "services/serializers/Serializers.hpp"
 #include "events/Events.hpp"
 #include "utils/DbTransaction.hpp"
+#include <drogon/orm/CoroMapper.h>
+#include "utils/Errors.hpp"
+#include "models/EventEventTags.h"
+#include "models/EventUsers.h"
+#include "models/Users.h"
 
 using drogon::Task;
+using drogon_model::evento::EventEventTags;
+using drogon_model::evento::EventUsers;
+using drogon_model::evento::Events;
+using drogon_model::evento::Users;
+using namespace drogon::orm;
 
 namespace {
+    Task<> tagEvent(const DbClientPtr& db, const std::string& eventId, const std::string& tagId) {
+        EventEventTags link;
+        link.setEventId(eventId);
+        link.setEventTagId(tagId);
+        co_await CoroMapper<EventEventTags>(db).insert(link);
+    }
+
     std::string containsPattern(const std::string& text) {
         std::string out = "%";
         for (char c : text) {
@@ -47,8 +64,8 @@ Task<EventPage> EventService::listEvents(const std::string& tag, const std::stri
             where = "WHERE EXISTS (SELECT 1 FROM event_event_tags x WHERE x.event_id = e.id AND x.event_tag_id = $1)";
             param = tags[0]["id"].as<std::string>();
         } else if (tag == "Recommended") {
-            const auto users = co_await dbClient_->execSqlCoro("SELECT location FROM users WHERE id = $1", userId);
-            const std::string location = users.empty() || users[0]["location"].isNull() ? "" : users[0]["location"].as<std::string>();
+            const auto users = co_await CoroMapper<Users>(dbClient_).findBy(Criteria(Users::Cols::_id, userId));
+            const std::string location = users.empty() ? "" : users[0].getValueOfLocation();
             if (const auto city = cityOf(location); !city.empty()) {
                 where = "WHERE e.location ILIKE $1 ESCAPE '\\'";
                 param = containsPattern(city);
@@ -140,6 +157,15 @@ Task<std::optional<Json::Value>> EventService::getEvent(const std::string& id) {
     co_return events[0];
 }
 
+Task<Events> EventService::geteventbyid(const std::string& eventId) {
+    CoroMapper<Events> events(dbClient_);
+   try {
+        co_return co_await events.findByPrimaryKey(eventId);
+    } catch (const UnexpectedRows&) {
+        throw NotFound("Event not found");
+    }
+}
+
 Task<Json::Value> EventService::createEvent(const CreateEventInput& input, const std::string& userId,
                                             const std::optional<std::string>& eventImageUrl) {
     std::string eventId;
@@ -155,14 +181,16 @@ Task<Json::Value> EventService::createEvent(const CreateEventInput& input, const
                 static_cast<int32_t>(input.capacity.value_or(0)), userId);
             eventId = inserted[0]["id"].as<std::string>();
 
-            co_await tx->execSqlCoro("INSERT INTO event_users (event_id, user_id) VALUES ($1, $2)", eventId, userId);
+            EventUsers host;
+            host.setEventId(eventId);
+            host.setUserId(userId);
+            co_await CoroMapper<EventUsers>(tx).insert(host);
 
             const auto tag = co_await tx->execSqlCoro(
                 "INSERT INTO event_tags (tag_name) VALUES ($1) "
                 "ON CONFLICT (tag_name) DO UPDATE SET tag_name = EXCLUDED.tag_name RETURNING id",
                 input.eventCategory);
-            co_await tx->execSqlCoro("INSERT INTO event_event_tags (event_id, event_tag_id) VALUES ($1, $2)",
-                                     eventId, tag[0]["id"].as<std::string>());
+            co_await tagEvent(tx, eventId, tag[0]["id"].as<std::string>());
         } catch (...) {
             tx->rollback();
             throw;
@@ -197,9 +225,8 @@ Task<std::optional<Json::Value>> EventService::updateEvent(const std::string& ev
                 "INSERT INTO event_tags (tag_name) VALUES ($1) "
                 "ON CONFLICT (tag_name) DO UPDATE SET tag_name = EXCLUDED.tag_name RETURNING id",
                 input.eventCategory);
-            co_await tx->execSqlCoro("DELETE FROM event_event_tags WHERE event_id = $1", eventId);
-            co_await tx->execSqlCoro("INSERT INTO event_event_tags (event_id, event_tag_id) VALUES ($1, $2)",
-                                     eventId, tag[0]["id"].as<std::string>());
+            co_await CoroMapper<EventEventTags>(tx).deleteBy(Criteria(EventEventTags::Cols::_event_id, eventId));
+            co_await tagEvent(tx, eventId, tag[0]["id"].as<std::string>());
         } catch (...) {
             tx->rollback();
             throw;
@@ -210,23 +237,25 @@ Task<std::optional<Json::Value>> EventService::updateEvent(const std::string& ev
 }
 
 Task<std::optional<std::string>> EventService::hostOf(const std::string& eventId, bool& eventExists) {
-    const auto rows = co_await dbClient_->execSqlCoro("SELECT created_by FROM events WHERE id = $1", eventId);
-    eventExists = !rows.empty();
-    if (rows.empty() || rows[0]["created_by"].isNull()) co_return std::nullopt;
-    co_return rows[0]["created_by"].as<std::string>();
+    const auto events = co_await CoroMapper<Events>(dbClient_).findBy(Criteria(Events::Cols::_id, eventId));
+    eventExists = !events.empty();
+    if (events.empty() || !events[0].getCreatedBy()) co_return std::nullopt;
+    co_return events[0].getValueOfCreatedBy();
 }
 
 Task<AttendeePage> EventService::attendees(const std::string& eventId, const std::string& hostId, const PageInput& page) {
     AttendeePage result;
-    const auto count = co_await dbClient_->execSqlCoro(
-        "SELECT COUNT(*) AS n FROM event_users WHERE event_id = $1 AND user_id <> $2", eventId, hostId);
-    result.count = count[0]["n"].as<size_t>();
+    const Criteria guests = Criteria(EventUsers::Cols::_event_id, eventId) &&
+                            Criteria(EventUsers::Cols::_user_id, CompareOperator::NE, hostId);
+    result.count = co_await CoroMapper<EventUsers>(dbClient_).count(guests);
 
-    const auto rows = co_await dbClient_->execSqlCoro(
-        "SELECT user_id FROM event_users WHERE event_id = $1 AND user_id <> $2 "
-        "ORDER BY registered_at, user_id LIMIT $3 OFFSET $4",
-        eventId, hostId, static_cast<int64_t>(page.limit), static_cast<int64_t>(page.offset));
-    for (const auto& row : rows) result.userIds.push_back(row["user_id"].as<std::string>());
+    const auto rows = co_await CoroMapper<EventUsers>(dbClient_)
+                          .orderBy(EventUsers::Cols::_registered_at)
+                          .orderBy(EventUsers::Cols::_user_id)
+                          .limit(page.limit)
+                          .offset(page.offset)
+                          .findBy(guests);
+    for (const auto& row : rows) result.userIds.push_back(row.getValueOfUserId());
     co_return result;
 }
 
@@ -235,11 +264,11 @@ Task<RegisterResult> EventService::registerAttendee(const std::string& eventId, 
     const auto host = co_await hostOf(eventId, exists);
     if (!exists) co_return RegisterResult::EventNotFound;
 
-    const auto users = co_await dbClient_->execSqlCoro("SELECT id FROM users WHERE email = $1", email);
+    const auto users = co_await CoroMapper<Users>(dbClient_).findBy(Criteria(Users::Cols::_email, email));
     if (users.empty()) co_return RegisterResult::UserNotFound;
     if (!host) co_return RegisterResult::HostNotFound;
 
-    const std::string userId = users[0]["id"].as<std::string>();
+    const std::string userId = users[0].getValueOfId();
     const auto inserted = co_await dbClient_->execSqlCoro(
         "INSERT INTO event_users (event_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", eventId, userId);
     if (inserted.affectedRows() == 0) co_return RegisterResult::AlreadyRegistered;

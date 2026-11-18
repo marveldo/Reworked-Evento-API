@@ -142,6 +142,8 @@ Settings* getSettings() {
 
     s->geo.enabled     = toBool("GEO_LOOKUP_ENABLED", "true");
     s->geo.ipinfoToken = dotenv::get_or("IPINFO_TOKEN", "");
+    s->paystack.apiKey = dotenv::require("PAYSTACK_SECRET_KEY");
+    s->paystack.url    = dotenv::get_or("PAYSTACK_API_URL", "https://api.paystack.co");
 
     if (s->port < 1 || s->port > 65535) throw std::runtime_error("PORT out of range");
     static const std::regex folder(R"([A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*)");

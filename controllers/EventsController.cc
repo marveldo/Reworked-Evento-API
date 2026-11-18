@@ -108,6 +108,8 @@ Task<HttpResponsePtr> EventsController::RegisterAttendee(HttpRequestPtr req, std
     auto parsed = parseRegisterAttendee(body.fields);
     if (auto* errors = std::get_if<std::vector<FieldError>>(&parsed)) co_return res::validation(*errors);
     const auto& input = std::get<RegisterAttendeeInput>(parsed);
+    // auto event_details = coawait services_-> geteventbyId(id);
+    
 
     switch (co_await services_->eventService->registerAttendee(id, input.email)) {
         case RegisterResult::EventNotFound:     co_return res::notFound(EVENT_NOT_FOUND);

@@ -6,9 +6,11 @@
 #include "utils/Errors.hpp"
 #include "utils/Media.hpp"
 #include "events/Events.hpp"
+#include "models/DeviceInfo.h"
 
 using namespace drogon::orm;
 using drogon::Task;
+using drogon_model::evento::DeviceInfo;
 
 namespace {
     const char* EMAIL_TAKEN = "user with this email already exists.";
@@ -109,9 +111,9 @@ Task<Users> UserService::updateUser(const std::string& id, const UpdateUserInput
 Task<std::vector<std::string>> UserService::deleteUser(const std::string& id) {
     auto user = co_await getUserById(id);
 
-    auto devices = co_await dbClient_->execSqlCoro("SELECT id FROM device_info WHERE user_id = $1", id);
+    const auto devices = co_await CoroMapper<DeviceInfo>(dbClient_).findBy(Criteria(DeviceInfo::Cols::_user_id, id));
     std::vector<std::string> deviceIds;
-    for (const auto& row : devices) deviceIds.push_back(row["id"].as<std::string>());
+    for (const auto& device : devices) deviceIds.push_back(device.getValueOfId());
 
     CoroMapper<Users> users(dbClient_);
     co_await users.deleteByPrimaryKey(id);
@@ -129,8 +131,11 @@ Task<bool> UserService::checkPassword(const Users& user, const std::string& pass
 
     if (security::needsRehash(stored)) {
         const std::string upgraded = co_await security::hashAsync(password);
-        co_await dbClient_->execSqlCoro("UPDATE users SET password = $1 WHERE id = $2 AND password = $3",
-                                        upgraded, user.getValueOfId(), stored);
+        const std::vector<std::string> passwordColumn{Users::Cols::_password};
+        co_await CoroMapper<Users>(dbClient_).updateBy(
+            passwordColumn,
+            Criteria(Users::Cols::_id, user.getValueOfId()) && Criteria(Users::Cols::_password, stored),
+            upgraded);
     }
     co_return true;
 }
@@ -140,7 +145,8 @@ Task<> UserService::setLastLogin(const std::string& id) {
 }
 
 Task<> UserService::setLocation(const std::string& id, const std::string& location) {
-    co_await dbClient_->execSqlCoro("UPDATE users SET location = $1 WHERE id = $2", location, id);
+    const std::vector<std::string> locationColumn{Users::Cols::_location};
+    co_await CoroMapper<Users>(dbClient_).updateBy(locationColumn, Criteria(Users::Cols::_id, id), location);
 }
 
 Task<Json::Value> UserService::userJson(const std::string& id) {
@@ -155,8 +161,8 @@ Task<Json::Value> UserService::usersJson(const std::vector<std::string>& ids) {
 }
 
 Task<Json::Value> UserService::allUsersJson() {
-    const auto rows = co_await dbClient_->execSqlCoro("SELECT id FROM users ORDER BY created_at, id");
+    const auto users = co_await CoroMapper<Users>(dbClient_).orderBy(Users::Cols::_created_at).orderBy(Users::Cols::_id).findAll();
     std::vector<std::string> ids;
-    for (const auto& row : rows) ids.push_back(row["id"].as<std::string>());
+    for (const auto& user : users) ids.push_back(user.getValueOfId());
     co_return co_await serializers::users(dbClient_, ids, frontendLink_);
 }

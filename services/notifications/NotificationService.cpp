@@ -24,8 +24,7 @@ Task<> NotificationService::push(const std::string& userId, const std::string& m
 
 Task<NotificationPage> NotificationService::list(const std::string& userId, const PageInput& page) {
     NotificationPage result;
-    const auto count = co_await dbClient_->execSqlCoro("SELECT COUNT(*) AS n FROM notifications WHERE user_id = $1", userId);
-    result.count = count[0]["n"].as<size_t>();
+    result.count = co_await CoroMapper<Notifications>(dbClient_).count(Criteria(Notifications::Cols::_user_id, userId));
 
     const auto rows = co_await dbClient_->execSqlCoro(
         "SELECT id, message, "

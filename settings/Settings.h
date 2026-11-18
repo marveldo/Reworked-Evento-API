@@ -14,6 +14,11 @@ struct DatabaseSettings {
     int         connections;
 };
 
+struct PaystackSettings {
+    std::string apiKey ;
+    std::string url;
+};
+
 struct JWTConfig {
     std::string accessSecret;
     std::string refreshSecret;
@@ -70,6 +75,7 @@ struct Settings {
     CloudinarySettings cloudinary;
     GoogleSettings   google;
     GeoSettings      geo;
+    PaystackSettings paystack;
 
     bool isProduction() const { return environment == "production"; }
 };

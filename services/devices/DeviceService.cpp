@@ -66,24 +66,25 @@ Task<std::optional<DeviceSession>> DeviceService::refreshSession(const std::stri
     session.refreshexpirytime = newrefreshToken.expiry;
 
 
-    const auto result = co_await dbClient_->execSqlCoro(
-        "UPDATE device_info SET access_token = $1, refresh_token = $2 "
-        "WHERE id = $3 AND user_id = $4 AND refresh_token = $5",
-        session.accessToken, session.refreshToken, claims->deviceId, claims->userId, refreshToken);
-    if (result.affectedRows() == 0) co_return std::nullopt;
+    const std::vector<std::string> tokenColumns{DeviceInfo::Cols::_access_token, DeviceInfo::Cols::_refresh_token};
+    const size_t updated = co_await CoroMapper<DeviceInfo>(dbClient_).updateBy(
+        tokenColumns,
+        Criteria(DeviceInfo::Cols::_id, claims->deviceId) && Criteria(DeviceInfo::Cols::_user_id, claims->userId) &&
+            Criteria(DeviceInfo::Cols::_refresh_token, refreshToken),
+        session.accessToken, session.refreshToken);
+    if (updated == 0) co_return std::nullopt;
     co_return session;
 }
 
 Task<bool> DeviceService::isActive(const std::string& deviceId, const std::string& userId) {
-    const auto result = co_await dbClient_->execSqlCoro(
-        "SELECT 1 FROM device_info WHERE id = $1 AND user_id = $2", deviceId, userId);
-    co_return !result.empty();
+    co_return co_await CoroMapper<DeviceInfo>(dbClient_).count(
+        Criteria(DeviceInfo::Cols::_id, deviceId) && Criteria(DeviceInfo::Cols::_user_id, userId)) > 0;
 }
 
 Task<bool> DeviceService::isCurrentAccessToken(const std::string& deviceId, const std::string& userId, const std::string& token) {
-    const auto result = co_await dbClient_->execSqlCoro(
-        "SELECT 1 FROM device_info WHERE id = $1 AND user_id = $2 AND access_token = $3", deviceId, userId, token);
-    co_return !result.empty();
+    co_return co_await CoroMapper<DeviceInfo>(dbClient_).count(
+        Criteria(DeviceInfo::Cols::_id, deviceId) && Criteria(DeviceInfo::Cols::_user_id, userId) &&
+        Criteria(DeviceInfo::Cols::_access_token, token)) > 0;
 }
 
 Task<Json::Value> DeviceService::listForUser(const std::string& userId) {
@@ -106,9 +107,9 @@ Task<Json::Value> DeviceService::listForUser(const std::string& userId) {
 }
 
 Task<bool> DeviceService::endSession(const std::string& deviceId, const std::string& userId) {
-    const auto result = co_await dbClient_->execSqlCoro(
-        "DELETE FROM device_info WHERE id = $1 AND user_id = $2", deviceId, userId);
-    if (result.affectedRows() == 0) co_return false;
+    const size_t deleted = co_await CoroMapper<DeviceInfo>(dbClient_).deleteBy(
+        Criteria(DeviceInfo::Cols::_id, deviceId) && Criteria(DeviceInfo::Cols::_user_id, userId));
+    if (deleted == 0) co_return false;
     events_->Publish(DEVICE_LOGGED_OUT, DeviceLoggedOut{deviceId});
     co_return true;
 }

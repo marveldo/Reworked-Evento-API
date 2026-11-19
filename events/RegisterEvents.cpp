@@ -15,6 +15,13 @@ void RegisterEvents(EventBus* bus, TaskQueue* queue) {
         queue->enqueue("update_user_location", {{"user_id", event.userId}, {"ip_address", event.ipAddress}});
     });
 
+    bus->Subscribe<DeviceLoggedIn>(DEVICE_LOGGED_IN, [queue](DeviceLoggedIn details) {
+        queue->enqueue("create_notification", {
+            {"user_id", details.userId},
+            {"message", "device with IP" + details.ipAddress + "Just Logged into Your Account"}
+        });
+    });
+
     bus->Subscribe<DeviceLoggedOut>(DEVICE_LOGGED_OUT, [queue](DeviceLoggedOut event) {
         queue->enqueue("send_logout", {{"device_id", event.deviceId}});
     });

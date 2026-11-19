@@ -53,3 +53,39 @@ Task<HttpResponsePtr> UsersController::DeleteCurrentUser(HttpRequestPtr req) {
     resp->setStatusCode(k204NoContent);
     co_return resp;
 }
+
+Task<HttpResponsePtr> UsersController::Onboarding(HttpRequestPtr req) {
+    const auto body = readBody(req);
+    if (body.error) co_return res::validation({*body.error});
+    auto parsed = parseOnboarding(body.fields);
+    if (auto* errors = std::get_if<std::vector<FieldError>>(&parsed)) co_return res::validation(*errors);
+    const auto& input = std::get<OnboardingInput>(parsed);
+
+    const auto id   = req->attributes()->get<std::string>("id");
+    const auto user = co_await services_->userService->getUserById(id);
+    if (user.getValueOfOnboarded()) co_return res::error(k400BadRequest, "You've already finished onboarding.");
+    if (user.getValueOfRole() == "organizer" && input.role != "organizer") {
+        co_return res::validation("role", "Organizers can't switch back to attendee.");
+    }
+
+    co_await services_->userService->completeOnboarding(id, input.role, input.interests);
+    co_return res::success(k200OK, "Onboarding complete", co_await services_->userService->userJson(id));
+}
+
+Task<HttpResponsePtr> UsersController::UpdateInterests(HttpRequestPtr req) {
+    const auto body = readBody(req);
+    if (body.error) co_return res::validation({*body.error});
+    auto parsed = parseInterests(body.fields);
+    if (auto* errors = std::get_if<std::vector<FieldError>>(&parsed)) co_return res::validation(*errors);
+    const auto& input = std::get<InterestsInput>(parsed);
+
+    const auto id = req->attributes()->get<std::string>("id");
+    co_await services_->userService->setInterests(id, input.interests);
+    co_return res::success(k200OK, "Interests updated", co_await services_->userService->userJson(id));
+}
+
+Task<HttpResponsePtr> UsersController::BecomeOrganizer(HttpRequestPtr req) {
+    const auto id = req->attributes()->get<std::string>("id");
+    co_await services_->userService->becomeOrganizer(id);
+    co_return res::success(k200OK, "You're now an organizer", co_await services_->userService->userJson(id));
+}

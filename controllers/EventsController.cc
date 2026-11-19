@@ -34,7 +34,15 @@ Task<HttpResponsePtr> EventsController::ListEvents(HttpRequestPtr req) {
     co_return pagination::response(req, page, result.count, result.events);
 }
 
+Task<HttpResponsePtr> EventsController::ListCategories(HttpRequestPtr) {
+    co_return res::success(k200OK, "Categories", co_await services_->eventService->categories());
+}
+
 Task<HttpResponsePtr> EventsController::CreateEvent(HttpRequestPtr req) {
+    if (co_await services_->userService->roleOf(req->attributes()->get<std::string>("id")) != "organizer") {
+        co_return res::error(k403Forbidden, "Only organizers can create events. Become an organizer in your settings.");
+    }
+
     const auto body = readBody(req);
     if (body.error) co_return res::validation({*body.error});
 

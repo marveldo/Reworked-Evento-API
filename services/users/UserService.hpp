@@ -35,6 +35,11 @@ class UserService {
         drogon::Task<> setLastLogin(const std::string& id);
         drogon::Task<> setLocation(const std::string& id, const std::string& location);
 
+        drogon::Task<std::string> roleOf(const std::string& id);
+        drogon::Task<> setInterests(const std::string& id, const std::vector<std::string>& names, drogon::orm::DbClientPtr tx = nullptr);
+        drogon::Task<> completeOnboarding(const std::string& id, const std::string& role, const std::vector<std::string>& interests);
+        drogon::Task<> becomeOrganizer(const std::string& id);
+
         drogon::Task<Json::Value> userJson(const std::string& id);
         drogon::Task<Json::Value> usersJson(const std::vector<std::string>& ids);
         drogon::Task<Json::Value> allUsersJson();

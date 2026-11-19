@@ -212,6 +212,24 @@
             "type": "string",
             "format": "uuid",
             "description": "Only in login, Google sign-in and refresh responses"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "attendee",
+              "organizer"
+            ]
+          },
+          "onboarded": {
+            "type": "boolean",
+            "description": "false until the user finishes /auth/current-user/onboarding/ (attendees and Google sign-ups)"
+          },
+          "interests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Category names used for the Recommended feed"
           }
         }
       },
@@ -532,6 +550,15 @@
                   },
                   "bio": {
                     "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "attendee",
+                      "organizer"
+                    ],
+                    "default": "attendee",
+                    "description": "Organizers are onboarded straight away; attendees then pick interests."
                   }
                 }
               }
@@ -1358,6 +1385,7 @@
         ],
         "summary": "Events, newest first",
         "security": [
+          {},
           {
             "bearer": []
           }
@@ -1448,7 +1476,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Public: works without a token. With a token, tag=Recommended returns events in the user's interests (all events if they have none)."
       },
       "post": {
         "tags": [
@@ -1602,6 +1631,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Only organizers can create events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1613,6 +1652,7 @@
         ],
         "summary": "One event",
         "security": [
+          {},
           {
             "bearer": []
           }
@@ -1670,7 +1710,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Public: works without a token. With a token, tag=Recommended returns events in the user's interests (all events if they have none)."
       }
     },
     "/api/v1/events/{id}/attendees/": {
@@ -2358,6 +2399,229 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories/": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Event categories that exist, most used first (the interest options). Public.",
+        "responses": {
+          "200": {
+            "description": "Categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "events_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/current-user/onboarding/": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Finish onboarding: choose a role and (for attendees) interests. Only once.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "attendee",
+                      "organizer"
+                    ]
+                  },
+                  "interests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Already onboarded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Bad role, unknown category, or an organizer choosing attendee",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/current-user/interests/": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Replace the user's interests (category names; [] clears them).",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "interests"
+                ],
+                "properties": {
+                  "interests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Missing field or unknown category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/current-user/become-organizer/": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Turn an attendee into an organizer (can't be undone).",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
                 }
               }
             }

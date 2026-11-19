@@ -20,6 +20,9 @@ class UsersController : public drogon::HttpController<UsersController, false>
     ADD_METHOD_TO(UsersController::UpdateCurrentUser, API_V1 + "/auth/current-user/", Put, "JwtMiddleWare");
     ADD_METHOD_TO(UsersController::DeleteCurrentUser, API_V1 + "/auth/current-user/", Delete, "JwtMiddleWare");
     ADD_METHOD_TO(UsersController::ListMyEvents,      API_V1 + "/auth/current-user/events/", Get, "JwtMiddleWare");
+    ADD_METHOD_TO(UsersController::Onboarding,        API_V1 + "/auth/current-user/onboarding/", Post, "JwtMiddleWare");
+    ADD_METHOD_TO(UsersController::UpdateInterests,   API_V1 + "/auth/current-user/interests/", Put, "JwtMiddleWare");
+    ADD_METHOD_TO(UsersController::BecomeOrganizer,   API_V1 + "/auth/current-user/become-organizer/", Post, "JwtMiddleWare");
     METHOD_LIST_END
 
     Task<HttpResponsePtr> ListUsers(HttpRequestPtr req);
@@ -29,6 +32,10 @@ class UsersController : public drogon::HttpController<UsersController, false>
     // Events the user hosts or registered for. ?when=upcoming|past, ?role=hosting|attending,
     // ?price=free|paid (leave a filter out for both), ?limit=, ?offset=.
     Task<HttpResponsePtr> ListMyEvents(HttpRequestPtr req);
+
+    Task<HttpResponsePtr> Onboarding(HttpRequestPtr req);
+    Task<HttpResponsePtr> UpdateInterests(HttpRequestPtr req);
+    Task<HttpResponsePtr> BecomeOrganizer(HttpRequestPtr req);
 
   private:
     Services* services_;

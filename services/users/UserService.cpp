@@ -7,10 +7,15 @@
 #include "utils/Media.hpp"
 #include "events/Events.hpp"
 #include "models/DeviceInfo.h"
+#include "models/EventTags.h"
+#include "models/UserInterests.h"
+#include "utils/DbTransaction.hpp"
 
 using namespace drogon::orm;
 using drogon::Task;
 using drogon_model::evento::DeviceInfo;
+using drogon_model::evento::EventTags;
+using drogon_model::evento::UserInterests;
 
 namespace {
     const char* EMAIL_TAKEN = "user with this email already exists.";
@@ -46,6 +51,8 @@ Task<Users> UserService::createUser(const RegisterInput& input) {
     user.setFullName(input.fullName);
     user.setEmail(input.email);
     user.setPassword(co_await security::hashAsync(input.password));
+    user.setRole(input.role);
+    user.setOnboarded(input.role == "organizer");
     applyProfile(user, input.profile);
 
     Users created;
@@ -70,6 +77,8 @@ Task<std::pair<Users, bool>> UserService::findOrCreateSocialUser(const SocialPro
     if (!profile.picture.empty()) user.setProfileImg(profile.picture);
     user.setIsVerified(true);
     user.setPassword(security::unusablePassword());
+    user.setRole("attendee");
+    user.setOnboarded(false);
 
     try {
         auto created = co_await users.insert(user);
@@ -165,4 +174,45 @@ Task<Json::Value> UserService::allUsersJson() {
     std::vector<std::string> ids;
     for (const auto& user : users) ids.push_back(user.getValueOfId());
     co_return co_await serializers::users(dbClient_, ids, frontendLink_);
+}
+
+Task<std::string> UserService::roleOf(const std::string& id) {
+    const auto users = co_await CoroMapper<Users>(dbClient_).findBy(Criteria(Users::Cols::_id, id));
+    if (users.empty()) throw NotFound("User not found");
+    co_return users[0].getValueOfRole();
+}
+
+Task<> UserService::setInterests(const std::string& id, const std::vector<std::string>& names, DbClientPtr tx) {
+    const auto client = tx ? tx : dbClient_;
+    std::vector<EventTags> tags;
+    if (!names.empty()) {
+        tags = co_await CoroMapper<EventTags>(client).findBy(Criteria(EventTags::Cols::_tag_name, CompareOperator::In, names));
+        if (tags.size() < names.size()) {
+            for (const auto& name : names) {
+                const bool known = std::any_of(tags.begin(), tags.end(), [&](const EventTags& t) { return t.getValueOfTagName() == name; });
+                if (!known) throw FieldConflict("interests", "Unknown category: " + name);
+            }
+        }
+    }
+
+    co_await CoroMapper<UserInterests>(client).deleteBy(Criteria(UserInterests::Cols::_user_id, id));
+    for (const auto& tag : tags) {
+        UserInterests interest;
+        interest.setUserId(id);
+        interest.setEventTagId(tag.getValueOfId());
+        co_await CoroMapper<UserInterests>(client).insert(interest);
+    }
+}
+
+Task<> UserService::completeOnboarding(const std::string& id, const std::string& role, const std::vector<std::string>& interests) {
+    co_await withTransaction(dbClient_, [&](DbClientPtr tx) -> Task<> {
+        const std::vector<std::string> columns{Users::Cols::_role, Users::Cols::_onboarded};
+        co_await CoroMapper<Users>(tx).updateBy(columns, Criteria(Users::Cols::_id, id), role, true);
+        co_await setInterests(id, interests, tx);
+    });
+}
+
+Task<> UserService::becomeOrganizer(const std::string& id) {
+    const std::vector<std::string> columns{Users::Cols::_role, Users::Cols::_onboarded};
+    co_await CoroMapper<Users>(dbClient_).updateBy(columns, Criteria(Users::Cols::_id, id), std::string("organizer"), true);
 }

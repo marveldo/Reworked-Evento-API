@@ -66,6 +66,8 @@ class Users
         static const std::string _instagram;
         static const std::string _created_at;
         static const std::string _updated_at;
+        static const std::string _role;
+        static const std::string _onboarded;
 
     };
 
@@ -294,9 +296,26 @@ class Users
     ///Set the value of the column updated_at
     void setUpdatedAt(const ::trantor::Date &pUpdatedAt) noexcept;
 
+    /**  For column role  */
+    ///Get the value of the column role, returns the default value if the column is null
+    const std::string &getValueOfRole() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<std::string> &getRole() const noexcept;
+    ///Set the value of the column role
+    void setRole(const std::string &pRole) noexcept;
+    void setRole(std::string &&pRole) noexcept;
+
+    /**  For column onboarded  */
+    ///Get the value of the column onboarded, returns the default value if the column is null
+    const bool &getValueOfOnboarded() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<bool> &getOnboarded() const noexcept;
+    ///Set the value of the column onboarded
+    void setOnboarded(const bool &pOnboarded) noexcept;
 
 
-    static size_t getColumnNumber() noexcept {  return 19;  }
+
+    static size_t getColumnNumber() noexcept {  return 21;  }
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
@@ -338,6 +357,8 @@ class Users
     std::shared_ptr<std::string> instagram_;
     std::shared_ptr<::trantor::Date> createdAt_;
     std::shared_ptr<::trantor::Date> updatedAt_;
+    std::shared_ptr<std::string> role_;
+    std::shared_ptr<bool> onboarded_;
 
     struct MetaData
     {
@@ -350,7 +371,7 @@ class Users
         const bool notNull_;
     };
     static const std::vector<MetaData> metaData_;
-    bool dirtyFlag_[19]={ false };
+    bool dirtyFlag_[21]={ false };
   public:
     static const std::string &sqlForFindingByPrimaryKey()
     {
@@ -494,6 +515,20 @@ class Users
         ++parametersCount;
 
         if(!dirtyFlag_[18])
+        {
+            needSelection=true;
+        }
+        sql += "role,";
+        ++parametersCount;
+
+        if(!dirtyFlag_[19])
+        {
+            needSelection=true;
+        }
+        sql += "onboarded,";
+        ++parametersCount;
+
+        if(!dirtyFlag_[20])
         {
             needSelection=true;
         }
@@ -696,6 +731,32 @@ class Users
         }
 
         if(dirtyFlag_[18])
+        {
+
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+
+        }
+
+        else
+        {
+            sql +="default,";
+        }
+
+        if(dirtyFlag_[19])
+        {
+
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+
+        }
+
+        else
+        {
+            sql +="default,";
+        }
+
+        if(dirtyFlag_[20])
         {
 
             n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);

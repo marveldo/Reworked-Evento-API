@@ -165,6 +165,7 @@ Task<Json::Value> users(DbClientPtr db, std::vector<std::string> ids, std::strin
 
     const auto userRows = co_await db->execSqlCoro(
         "SELECT u.id, u.full_name, u.email, u.profile_img, u.location, u.website, u.instagram, u.facebook, u.twitter, u.bio, "
+        "       u.role, u.onboarded, "
         "       COALESCE(a.upcoming, 0) AS upcoming_events_count, "
         "       COALESCE(a.past, 0) AS past_events_count, "
         "       COALESCE(c.created, 0) AS created_events_count "
@@ -197,6 +198,20 @@ Task<Json::Value> users(DbClientPtr db, std::vector<std::string> ids, std::strin
         "ORDER BY e.created_at DESC, e.id",
         idArray);
 
+    const auto interestRows = co_await db->execSqlCoro(
+        "SELECT ui.user_id, t.tag_name "
+        "FROM user_interests ui "
+        "JOIN event_tags t ON t.id = ui.event_tag_id "
+        "WHERE ui.user_id = ANY($1::uuid[]) "
+        "ORDER BY t.tag_name",
+        idArray);
+    std::unordered_map<std::string, Json::Value> interestsByUser;
+    for (const auto& row : interestRows) {
+        auto& names = interestsByUser[row["user_id"].as<std::string>()];
+        if (names.isNull()) names = Json::Value(Json::arrayValue);
+        names.append(row["tag_name"].as<std::string>());
+    }
+
     const Json::Value upcoming = co_await events(db, eventRows, frontendLink);
     std::unordered_map<std::string, Json::Value> upcomingByUser;
     for (Json::ArrayIndex i = 0; i < upcoming.size(); i++) {
@@ -223,6 +238,9 @@ Task<Json::Value> users(DbClientPtr db, std::vector<std::string> ids, std::strin
         u["facebook"]              = text(row["facebook"]);
         u["twitter"]               = text(row["twitter"]);
         u["bio"]                   = text(row["bio"]);
+        u["role"]                  = text(row["role"]);
+        u["onboarded"]             = row["onboarded"].as<bool>();
+        u["interests"]             = interestsByUser.count(id) ? interestsByUser[id] : Json::Value(Json::arrayValue);
         byId[id] = u;
     }
 

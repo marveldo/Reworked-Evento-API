@@ -1,4 +1,5 @@
 #pragma once
+#include <set>
 #include "utils/Validation.hpp"
 #include "utils/RequestBody.hpp"
 #include "utils/Media.hpp"
@@ -46,10 +47,13 @@ inline ProfileFields readProfileFields(Validator& v) {
     };
 }
 
+inline const std::vector<std::pair<std::string, std::string>> USER_ROLES{{"attendee", "attendee"}, {"organizer", "organizer"}};
+
 struct RegisterInput {
     std::string fullName;
     std::string email;
     std::string password;               // plain text from the client: hash it before saving
+    std::string role = "attendee";
     ProfileFields profile;
 };
 
@@ -60,8 +64,9 @@ inline ParseResult<RegisterInput> parseRegister(const nlohmann::json& body) {
         auto password = v.requiredString("password", 8, 128);
         if (fullName && fullName->empty()) v.addError("full_name", "Field Cannot be empty");
         v.matches(email, "email", user_rules::email, "Enter a valid email address.");
+        auto role     = v.optionalEnum<std::string>("role", USER_ROLES);
         auto profile = readProfileFields(v);
-        return RegisterInput{fullName.value_or(""), email.value_or(""), password.value_or(""), profile};
+        return RegisterInput{fullName.value_or(""), email.value_or(""), password.value_or(""), role.value_or("attendee"), profile};
     });
 }
 
@@ -146,5 +151,58 @@ inline ParseResult<UpdateUserInput> parseUpdateUser(const RequestBody& body) {
             v.addError("profile_img", "must be the public_id from POST /api/v1/photos/signature/ with kind=profile");
         }
         return in;
+    });
+}
+
+inline std::vector<std::string> readInterests(const nlohmann::json& body, Validator& v) {
+    std::vector<std::string> names;
+    if (!body.contains("interests") || body["interests"].is_null()) return names;
+    const auto& list = body["interests"];
+    if (!list.is_array()) {
+        v.addError("interests", "must be a list of category names");
+        return names;
+    }
+    if (list.size() > 30) {
+        v.addError("interests", "pick at most 30");
+        return names;
+    }
+    std::set<std::string> seen;
+    for (const auto& item : list) {
+        if (!item.is_string()) {
+            v.addError("interests", "must be a list of category names");
+            return {};
+        }
+        std::string name = item.get<std::string>();
+        name.erase(0, name.find_first_not_of(" \t"));
+        name.erase(name.find_last_not_of(" \t") + 1);
+        if (name.empty() || name.size() > 550) {
+            v.addError("interests", "each category name must be 1 to 550 characters");
+            return {};
+        }
+        if (seen.insert(name).second) names.push_back(name);
+    }
+    return names;
+}
+
+struct InterestsInput {
+    std::vector<std::string> interests;
+};
+
+inline ParseResult<InterestsInput> parseInterests(const nlohmann::json& body) {
+    return parseFields<InterestsInput>(body, [&body](Validator& v) {
+        if (!body.contains("interests")) v.addError("interests", "This field is required.");
+        return InterestsInput{readInterests(body, v)};
+    });
+}
+
+struct OnboardingInput {
+    std::string role;
+    std::vector<std::string> interests;
+};
+
+inline ParseResult<OnboardingInput> parseOnboarding(const nlohmann::json& body) {
+    return parseFields<OnboardingInput>(body, [&body](Validator& v) {
+        auto role = v.requiredEnum<std::string>("role", USER_ROLES);
+        return OnboardingInput{role.value_or(""), readInterests(body, v)};
     });
 }

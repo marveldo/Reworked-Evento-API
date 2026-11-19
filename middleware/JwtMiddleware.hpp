@@ -17,3 +17,15 @@ public:
 private:
     Services* services_;
 };
+
+class OptionalJwtMiddleWare : public drogon::HttpCoroMiddleware<OptionalJwtMiddleWare, false>
+{
+public:
+    explicit OptionalJwtMiddleWare(Services* services) : services_(services) {}
+
+    drogon::Task<drogon::HttpResponsePtr> invoke(const drogon::HttpRequestPtr& req,
+                                                 drogon::MiddlewareNextAwaiter&& next) override;
+
+private:
+    Services* services_;
+};

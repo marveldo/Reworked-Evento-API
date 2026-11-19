@@ -43,6 +43,8 @@ class EventService {
 
         drogon::Task<EventPage> listEvents(const std::string& tag, const std::string& userId, const PageInput& page);
 
+        drogon::Task<Json::Value> categories();
+
         // Events whose name, description, location, host name or category contains `text`
         // (case-insensitive). Events whose name matches come first.
         drogon::Task<EventPage> searchEvents(const std::string& text, const PageInput& page);

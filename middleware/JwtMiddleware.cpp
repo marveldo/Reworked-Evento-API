@@ -49,3 +49,18 @@ Task<HttpResponsePtr> JwtMiddleWare::invoke(const HttpRequestPtr& req, Middlewar
     req->attributes()->insert("device_id", claims->deviceId);
     co_return co_await next;
 }
+
+Task<HttpResponsePtr> OptionalJwtMiddleWare::invoke(const HttpRequestPtr& req, MiddlewareNextAwaiter&& next) {
+    const std::string token = JwtMiddleWare::bearerToken(req);
+    if (token.empty()) co_return co_await next;
+
+    auto claims = co_await JwtMiddleWare::authenticate(services_, token);
+    if (!claims) {
+        co_return res::unauthorized("Given token not valid for any token type");
+    }
+
+    req->attributes()->insert("id", claims->userId);
+    req->attributes()->insert("email", claims->email);
+    req->attributes()->insert("device_id", claims->deviceId);
+    co_return co_await next;
+}

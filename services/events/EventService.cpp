@@ -8,12 +8,14 @@
 #include "models/EventEventTags.h"
 #include "models/EventUsers.h"
 #include "models/Users.h"
+#include "models/UserInterests.h"
 
 using drogon::Task;
 using drogon_model::evento::EventEventTags;
 using drogon_model::evento::EventUsers;
 using drogon_model::evento::Events;
 using drogon_model::evento::Users;
+using drogon_model::evento::UserInterests;
 using namespace drogon::orm;
 
 namespace {
@@ -31,16 +33,6 @@ namespace {
             out += c;
         }
         return out + "%";
-    }
-
-    std::string cityOf(const std::string& location) {
-        const auto comma = location.find(',');
-        if (comma == std::string::npos) return "";
-        std::string city = location.substr(comma + 1);
-        city = city.substr(0, city.find(','));
-        const auto start = city.find_first_not_of(" \t");
-        const auto end   = city.find_last_not_of(" \t");
-        return start == std::string::npos ? "" : city.substr(start, end - start + 1);
     }
 
     std::string eventsQuery(const std::string& where, const std::string& limitParam, const std::string& offsetParam) {
@@ -63,12 +55,14 @@ Task<EventPage> EventService::listEvents(const std::string& tag, const std::stri
         if (!tags.empty()) {
             where = "WHERE EXISTS (SELECT 1 FROM event_event_tags x WHERE x.event_id = e.id AND x.event_tag_id = $1)";
             param = tags[0]["id"].as<std::string>();
-        } else if (tag == "Recommended") {
-            const auto users = co_await CoroMapper<Users>(dbClient_).findBy(Criteria(Users::Cols::_id, userId));
-            const std::string location = users.empty() ? "" : users[0].getValueOfLocation();
-            if (const auto city = cityOf(location); !city.empty()) {
-                where = "WHERE e.location ILIKE $1 ESCAPE '\\'";
-                param = containsPattern(city);
+        } else if (tag == "Recommended" && !userId.empty()) {
+            const size_t interests =
+                co_await CoroMapper<UserInterests>(dbClient_).count(Criteria(UserInterests::Cols::_user_id, userId));
+            if (interests > 0) {
+                where = "WHERE EXISTS (SELECT 1 FROM event_event_tags x "
+                        "JOIN user_interests ui ON ui.event_tag_id = x.event_tag_id "
+                        "WHERE x.event_id = e.id AND ui.user_id = $1)";
+                param = userId;
             }
         }
     }
@@ -298,4 +292,22 @@ Task<bool> EventService::addAttendee(const std::string& eventId, const std::stri
     const auto inserted = co_await client->execSqlCoro(
         "INSERT INTO event_users (event_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", eventId, userId);
     co_return inserted.affectedRows() > 0;
+}
+
+Task<Json::Value> EventService::categories() {
+    const auto rows = co_await dbClient_->execSqlCoro(
+        "SELECT t.tag_name, COUNT(x.event_id) AS events_count "
+        "FROM event_tags t "
+        "LEFT JOIN event_event_tags x ON x.event_tag_id = t.id "
+        "WHERE t.tag_name IS NOT NULL AND t.tag_name <> '' AND t.tag_name <> 'Recommended' "
+        "GROUP BY t.id, t.tag_name "
+        "ORDER BY events_count DESC, t.tag_name");
+    Json::Value list(Json::arrayValue);
+    for (const auto& row : rows) {
+        Json::Value item;
+        item["name"]         = row["tag_name"].as<std::string>();
+        item["events_count"] = static_cast<Json::Int64>(row["events_count"].as<int64_t>());
+        list.append(item);
+    }
+    co_return list;
 }

@@ -18,7 +18,7 @@ void RegisterEvents(EventBus* bus, TaskQueue* queue) {
     bus->Subscribe<DeviceLoggedIn>(DEVICE_LOGGED_IN, [queue](DeviceLoggedIn details) {
         queue->enqueue("create_notification", {
             {"user_id", details.userId},
-            {"message", "device with IP" + details.ipAddress + "Just Logged into Your Account"}
+            {"message", "device with IP " + details.ipAddress + " Just Logged into Your Account"}
         });
     });
 
